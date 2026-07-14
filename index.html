@@ -90,7 +90,7 @@ main{padding:26px 26px 60px;max-width:1280px;margin:0 auto}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* ===== Cards / controls ===== */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
+.card{background:rgba(255,255,255,.55);backdrop-filter:blur(12px) saturate(1.15);-webkit-backdrop-filter:blur(12px) saturate(1.15);border:1px solid rgba(255,255,255,.6);border-radius:16px;padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
 .card h3{font-size:16.5px;letter-spacing:-.01em;margin-bottom:4px;display:flex;align-items:center;gap:8px}
 .pin{display:inline-block;width:3px;height:16px;border-radius:2px;background:var(--teal);vertical-align:-3px;margin-right:4px}
 .card .desc{color:var(--muted);font-size:14.5px;margin-bottom:16px}
@@ -260,7 +260,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <span class="note" id="inputNote">①·② 업로드 후 처리하세요. ③ 접수현황은 접수·합격 칸을 채울 때 필요합니다.</span>
     </div>
     <div class="note" id="gsNote" style="margin-top:8px"></div>
-    <div class="note" style="margin-top:10px">⚠ <b>마스터는 경영지원이 그날 등록 처리를 시작하기 전</b>(이른 오후/오전)에 받아두세요. 등록 처리 후엔 퇴소생이 마스터에서 빠져 매핑이 누락됩니다.</div>
+
   </div>
 </section>
 
