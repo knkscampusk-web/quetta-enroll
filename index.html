@@ -255,8 +255,11 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     </div>
     <div class="row" style="margin-top:16px">
       <button class="btn pri" id="processBtn" disabled>처리하기</button>
+      <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
+      <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
       <span class="note" id="inputNote">①·② 업로드 후 처리하세요. ③ 접수현황은 접수·합격 칸을 채울 때 필요합니다.</span>
     </div>
+    <div class="note" id="gsNote" style="margin-top:8px"></div>
     <div class="note" style="margin-top:10px">⚠ <b>마스터는 경영지원이 그날 등록 처리를 시작하기 전</b>(이른 오후/오전)에 받아두세요. 등록 처리 후엔 퇴소생이 마스터에서 빠져 매핑이 누락됩니다.</div>
   </div>
 </section>
@@ -479,6 +482,43 @@ const LK  = key  => NS + key;           // localStorage / sessionStorage 키
 const SB_URL = 'https://elqxailuuxkzddsujlmc.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVscXhhaWx1dXhremRkc3VqbG1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MzM4OTcsImV4cCI6MjA5MDUwOTg5N30.qTip7cpCxRu2vk9-dGGbiyxjsRFc0UbwJMFziYxlljI';
 let _sbState=null; // 캐시
+
+/* ===================================================================
+ * 0-3) 구글시트 웹앱(Apps Script) — 마스터/접수현황 읽기 전용
+ * =================================================================== */
+const GS_URL   = 'https://script.google.com/macros/s/AKfycbxWO6wE0eAuv8iaMJuIm_PvnGlrYJHcoSlAGDW2XterbVggYaoKQIaO9sKKTjgqHsqG3w/exec';
+const GS_TOKEN = 'quetta9f3k2xQ';
+async function fetchSheet(which){
+  const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}`;
+  const res=await fetch(url);
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  if(!Array.isArray(j.rows)) throw new Error('rows 없음');
+  return j; // {which, sheet, rows, count}
+}
+// 경영지원 Supabase에서 그날 일일명단 재구성 (그 앱 exportDailyExcel 로직 재현)
+function _refDateSb(r){ return r.processedDate || (r.processedAt? (d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date(r.processedAt)) : ''); }
+async function buildDailyFromSb(date){
+  const st=await loadSbState();
+  const pays=Array.isArray(st.pays)?st.pays:[];
+  const refunds=Array.isArray(st.refunds)?st.refunds:[];
+  const prevTerms=(st.cfg&&st.cfg.prevTerms)||[];
+  const dateOf=p=>(p.uploadedDate||p.결제일자);
+  // 신규 판정: 이전 월 기수(prevTerms)에 이미 납부기록 있으면 신규 아님
+  const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
+  // 등록: 그날 uploadedDate, 환불금액 0, active
+  const regs=pays.filter(p=>dateOf(p)===date && (p.환불금액||0)===0 && p.status==='active');
+  // 환불: 그날 환불된 pays + refunds
+  const refs=[
+    ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0),
+    ...refunds.filter(r=>_refDateSb(r)===date).map(r=>({반:r.반,번호:r.번호||'',수험번호:r.수험번호,이름:r.이름,내역:(r.removedTerms||[]).join('/'),장학:r.장학||''}))
+  ];
+  const reg=regs.map(p=>({sid:norm(p.수험번호), name:p.이름, ban:p.반, cohort:p.내역, jang:p.장학, isNew:!prevIds.has(p.수험번호)}));
+  const ref=refs.map(r=>({sid:norm(r.수험번호), name:r.이름, cohort:r.내역, jang:r.장학}));
+  return { reg, ref, fileDate:date };
+}
+
+
 async function loadSbState(){
   if(_sbState) return _sbState;
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -610,8 +650,8 @@ function parseDaily(wb){
 }
 
 // 마스터 원생마스터: 헤더명으로 컬럼 탐색 + 반별 편성인원 카운트
-function parseMaster(wb){
-  const rows=sheetRows(wb,['원생마스터','학생명단']);
+function parseMaster(wb){ return parseMasterRows(sheetRows(wb,['원생마스터','학생명단'])); }
+function parseMasterRows(rows){
   const hdr=rows[0]||[];
   const find=(...alts)=>{ for(const a of alts){ const i=hdr.findIndex(h=>String(h).trim()===a); if(i>=0) return i; } return -1; };
   const ci={sid:find('수험번호'), sex:find('성별'), ban:find('반'), jh:find('전형방법'), gye:find('계열'), st:find('상태'), name:find('성명')};
@@ -626,9 +666,9 @@ function parseMaster(wb){
   return {map, total, banCount};
 }
 
-// 접수현황(학생전체조회): 전형방법별 접수 카운트 + 합격(유시험 제외 = 접수)
-function parseReceipt(wb){
-  const rows=sheetRows(wb,['학생전체조회']);
+// 접수현황(학생전체조회/접수등록대장): 전형방법별 접수 카운트 + 합격(유시험 제외 = 접수)
+function parseReceipt(wb){ return parseReceiptRows(sheetRows(wb,['학생전체조회','접수등록대장'])); }
+function parseReceiptRows(rows){
   // 헤더행 탐색 (수험번호 + 전형방법 포함된 행)
   let h=rows.findIndex(r=>r&&r.some(c=>String(c).trim()==='수험번호')&&r.some(c=>String(c).trim()==='전형방법'));
   if(h<0) h=0;
@@ -844,22 +884,25 @@ async function verifyInto(R, box){
   box.innerHTML='<div class="note">경영지원 앱에서 불러오는 중…</div>';
   const S2=(f)=>Object.values(R.perBan).reduce((a,b)=>a+(b[f]||0),0);
   const ourReg=S2('재등록'), ourRef=S2('퇴소');
-  // 총인원: 등록계(누적) 기준 — 히어로와 동일
-  const ourTotal=S2('등록계')||null;
-  const totalNote='등록계(누적) 기준';
+  const ourRegTot=S2('등록계')||null;   // 재등록 총계(누적)
+  const ourHead=S2('편성계')||null;      // 정규 편성계(참고)
   try{
     const st=await loadSbState();
     const t=sbTotalsForDate(st, R.base);
+    const theirTotal=t&&t.총인원!=null?t.총인원:null;
     box.innerHTML=`
       <div class="tablewrap"><table>
         <thead><tr><th style="text-align:left">항목</th><th>우리 도구</th><th>경영지원 앱</th><th>대조</th></tr></thead>
         <tbody>
-          ${cmpRow('금일 등록', ourReg, t?t.금일등록:null)}
+          <tr><td colspan="4" style="background:var(--teal-soft);font-weight:700;color:var(--teal-ink)">같은 기준 — 일치해야 함</td></tr>
+          ${cmpRow('금일 등록(재등록)', ourReg, t?t.금일등록:null)}
           ${cmpRow('금일 환불(퇴소)', ourRef, t?t.금일환불:null)}
-          ${cmpRow('총인원(등록계)', ourTotal==null?'—':ourTotal, t?t.총인원:null, totalNote)}
+          <tr><td colspan="4" style="background:var(--peri-soft);font-weight:700;color:var(--peri-ink)">참고 — 기준이 다름</td></tr>
+          <tr><td>재등록 총계(등록계)</td><td class="mono">${ourRegTot==null?'—':ourRegTot}</td><td class="mono" style="color:var(--muted)">—</td><td class="note">우리 누적</td></tr>
+          <tr><td>총인원</td><td class="mono" style="color:var(--muted)">정규 ${ourHead==null?'—':ourHead}</td><td class="mono"><b>${theirTotal==null?'—':theirTotal}</b></td><td class="note">경영지원=재원+반수+편입(신뢰)</td></tr>
         </tbody>
       </table></div>
-      <div class="note">날짜 ${R.base} 기준. 경영지원 앱은 기수·납부 기반이라 정의 차이가 날 수 있어요. 금일 등록/환불이 맞으면 핵심 검증은 통과예요.</div>`;
+      <div class="note">날짜 ${R.base} 기준. <b>금일 등록·환불</b>은 같은 기준이라 ✅ 일치해야 하고, ⚠ 차이가 나면 그날 자료를 점검하세요. <b>총인원</b>은 경영지원이 반수·편입까지 합산한 값이라 우리 정규 편성계와 다릅니다(경영지원 값을 신뢰).</div>`;
   }catch(e){
     console.error(e);
     box.innerHTML=`<div class="warn"><b>불러오기 실패</b><br>${(e.code||e.message||e)}<br><span class="note">RLS(읽기 권한)가 막혀 있으면 담당자에게 anon 읽기 허용을 요청하세요.</span></div>`;
@@ -1162,6 +1205,46 @@ document.getElementById('processBtn').onclick=()=>{
   CFG.writer=document.getElementById('writer').value||CFG.writer;
   aggregate(); switchTab('dash'); toast('처리 완료');
 };
+// 경영지원(Supabase)에서 그날 일일명단 자동 로드
+document.getElementById('sbDailyBtn').onclick=async()=>{
+  const note=document.getElementById('gsNote');
+  const date=document.getElementById('baseDate').value;
+  if(!date){ toast('기준 날짜를 먼저 선택하세요'); return; }
+  note.textContent=`경영지원에서 ${date} 일일명단 불러오는 중…`;
+  try{
+    STATE.daily=await buildDailyFromSb(date);
+    document.getElementById('dropDaily').classList.add('ok');
+    document.getElementById('nameDaily').textContent=`경영지원: ${date}`;
+    note.innerHTML=`✅ ${date} 일일명단: 등록 ${STATE.daily.reg.length} · 환불 ${STATE.daily.ref.length} (신규 ${STATE.daily.reg.filter(r=>r.isNew).length}) 불러옴`;
+    toast('✅ 경영지원 일일명단 불러오기 완료');
+    checkReady();
+  }catch(e){
+    console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ 일일명단 불러오기 실패: ${e.message||e}</span>`;
+  }
+};
+// 구글시트(Apps Script)에서 마스터·접수현황 자동 로드
+document.getElementById('gsLoadBtn').onclick=async()=>{
+  const note=document.getElementById('gsNote');
+  note.textContent='구글시트에서 불러오는 중…';
+  try{
+    const [m,r]=await Promise.all([fetchSheet('master'), fetchSheet('receipt')]);
+    STATE.master=parseMasterRows(m.rows);
+    STATE.receipt=parseReceiptRows(r.rows);
+    document.getElementById('dropMaster').classList.add('ok');
+    document.getElementById('dropReceipt').classList.add('ok');
+    document.getElementById('nameMaster').textContent=`구글시트: ${m.sheet}`;
+    document.getElementById('nameReceipt').textContent=`구글시트: ${r.sheet}`;
+    const bans=Object.keys(STATE.master.banCount||{}).join('·');
+    const rn=Object.values(STATE.receipt.byJh).reduce((a,b)=>a+b.접수,0);
+    note.innerHTML=`✅ 마스터 재원 ${STATE.master.total}명 (반 ${bans}) · 접수현황 전형 ${Object.keys(STATE.receipt.byJh).length}종/접수 ${rn}명 불러옴`;
+    toast('✅ 구글시트 불러오기 완료');
+    checkReady();
+  }catch(e){
+    console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ 불러오기 실패: ${e.message||e}</span> — 토큰/배포/시트 접근 권한을 확인하세요.`;
+  }
+};
 document.getElementById('baseDate').addEventListener('change',updateSplitTag);
 document.getElementById('season').addEventListener('change',updateSplitTag);
 
@@ -1219,9 +1302,9 @@ function buildResultFromRaw(date, rowsForDate, prevBan){
       const ban=r[RAW_IDX.반]; if(!ban) continue; const b=ensure(ban);
       b.재등록=numOr0(r[RAW_IDX.등록]); b.재등록환불=Math.abs(numOr0(r[RAW_IDX.환불]));
     } else if(g==='편입'||g==='편입(포함)'){
-      const ban=r[RAW_IDX.반]; if(!ban) continue; ensure(ban).편입=numOr0(r[RAW_IDX.등록]);
+      const ban=r[RAW_IDX.반]; if(!ban) continue; ensure(ban).편입=numOr0(r[RAW_IDX.편입])||numOr0(r[RAW_IDX.등록]);
     } else if(g==='반수'){
-      const ban=r[RAW_IDX.반]; if(!ban) continue; ensure(ban).반수=numOr0(r[RAW_IDX.등록]);
+      const ban=r[RAW_IDX.반]; if(!ban) continue; ensure(ban).반수=numOr0(r[RAW_IDX.반수])||numOr0(r[RAW_IDX.등록]);
     } else if(g==='개강전'){
       const jh=r[RAW_IDX.전형]; if(!jh) continue;
       perJh[jh]={접수:numOr0(r[RAW_IDX.접수계])||numOr0(r[RAW_IDX.접수]), 합격:numOr0(r[RAW_IDX.합격])||''};
