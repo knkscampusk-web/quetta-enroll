@@ -539,7 +539,8 @@ async function sbReRegUnpaid(){
   let 미납=0; prevIds.forEach(id=>{ if(!currIds.has(id)) 미납++; });
   return { 재등록누적:currIds.size, 미납, currTerms:curr, prevTerms:prev };
 }
-// 경영지원 Supabase에서 그날 일일명단 재구성 (그 앱 exportDailyExcel 로직 재현)function _refDateSb(r){ return r.processedDate || (r.processedAt? (d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date(r.processedAt)) : ''); }
+// 경영지원 Supabase에서 그날 일일명단 재구성 (그 앱 exportDailyExcel 로직 재현)
+function _refDateSb(r){ return r.processedDate || (r.processedAt? (d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date(r.processedAt)) : ''); }
 async function buildDailyFromSb(date){
   const st=await loadSbState();
   const pays=Array.isArray(st.pays)?st.pays:[];
