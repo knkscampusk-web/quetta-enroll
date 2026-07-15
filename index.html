@@ -820,6 +820,7 @@ function aggregateRoster(){
   }
 
   // 전형별 접수(개강전 블록) — 접수 시트에서
+  const RC=STATE.receipt;
   const perJh={}; for(const jh of jhList){ const r=RC&&RC.byJh&&RC.byJh[jh]; perJh[jh]={접수:r?r.접수:'',합격:r?(jh==='유시험 전형'?'':r.접수):''}; }
   // 장학 라벨별(당월 재등록 학생의 장학대상 코드)
   const perJang={}; for(const L of JANG_LIST) perJang[L]={등록:0,환불:0,등록남:0,등록여:0};
