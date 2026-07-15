@@ -1510,49 +1510,53 @@ document.getElementById('rosterBtn').onclick=async()=>{
   }
 };
 // ── 학생명단 재등록일 기입 (미리보기 → 실행) ──
+// 내역에서 월 추출 (경영지원 extractMonth 재현: 마지막 'N월')
+function cohortMonth(t){ const ms=String(t||'').match(/(\d+)월/g); if(ms&&ms.length) return parseInt(ms[ms.length-1]); if(String(t).includes('윈터')) return 1; return 0; }
 let WB=null; // 미리보기 상태
 document.getElementById('writebackBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
   const date=document.getElementById('baseDate').value;
-  const N=parseInt(CFG.billMonth)||0;
   if(!date){ toast('기준 날짜를 먼저 선택하세요'); return; }
-  if(!N){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='경영지원 결제자 + 학생명단 대조 중…';
   try{
-    // 1) 학생명단 최신 로드
     const ro=await fetchSheet('roster'); STATE.rosterData=parseRoster(ro.rows);
-    // 2) 경영지원 그날 결제자
     const daily=await buildDailyFromSb(date);
     const payers=daily.reg; // {sid,name,ban,cohort,jang,isNew}
-    // 3) 학생명단에서 수험번호로 찾아 정규N월 칸 상태 확인
-    const R=STATE.rosterData; const currCol=R.monthCol(N);
-    if(currCol<0) throw new Error(`학생명단에 정규${N}월 열 없음`);
+    const R=STATE.rosterData;
     const bySid={}; for(const st of R.students){ if(st.sid) bySid[st.sid]=st; }
-    const [mm,dd]=[+date.slice(5,7), +date.slice(8,10)];
-    const rows=[]; let toWrite=0, skip=0, nf=0;
+    const [yy,mm,dd]=[+date.slice(0,4), +date.slice(5,7), +date.slice(8,10)];
+    const rows=[]; const groups={}; let toWrite=0, skip=0, nf=0, nomonth=0;
     for(const p of payers){
+      const M=cohortMonth(p.cohort);                 // 이 학생이 들어갈 달
       const st=bySid[p.sid];
-      if(!st){ rows.push({state:'nf', sid:p.sid, name:p.name, ban:p.ban, cur:'', }); nf++; continue; }
-      const cur=st._row[currCol]; const curStr=String(cur||'').trim();
-      if(curStr){ rows.push({state:'skip', sid:p.sid, name:st.name||p.name, ban:st.ban, cur:mdNum(cur)?`${Math.floor(mdNum(cur)/100)}/${mdNum(cur)%100}`:curStr}); skip++; }
-      else { rows.push({state:'write', sid:p.sid, name:st.name||p.name, ban:st.ban, cur:''}); toWrite++; }
+      if(!M){ rows.push({state:'nomonth', sid:p.sid, name:p.name, ban:p.ban, col:'-', cur:'', cohort:p.cohort}); nomonth++; continue; }
+      if(!st){ rows.push({state:'nf', sid:p.sid, name:p.name, ban:p.ban, col:`정규${M}월`, cur:'', cohort:p.cohort}); nf++; continue; }
+      const col=R.monthCol(M);
+      const cur = col>=0 ? st._row[col] : '';
+      const curStr=String(cur||'').trim();
+      const curShow = mdNum(cur)!=null ? `${Math.floor(mdNum(cur)/100)}/${mdNum(cur)%100}` : curStr;
+      if(col<0){ rows.push({state:'nf', sid:p.sid, name:st.name||p.name, ban:st.ban, col:`정규${M}월(열없음)`, cur:'', cohort:p.cohort}); nf++; continue; }
+      if(curStr){ rows.push({state:'skip', sid:p.sid, name:st.name||p.name, ban:st.ban, col:`정규${M}월`, cur:curShow, cohort:p.cohort}); skip++; }
+      else { rows.push({state:'write', sid:p.sid, name:st.name||p.name, ban:st.ban, col:`정규${M}월`, cur:'', month:M, cohort:p.cohort});
+             (groups[M]=groups[M]||[]).push(p.sid); toWrite++; }
     }
-    WB={ month:N, year:+date.slice(0,4), day:dd, mm, date,
-         sids: rows.filter(r=>r.state==='write').map(r=>r.sid) };
-    // 미리보기 표
+    WB={ year:yy, mm, day:dd, date, groups };
     const badge={write:'<span style="color:var(--teal-ink)">✅ 기입</span>',
                  skip:'<span style="color:var(--muted)">⏭ 건너뜀</span>',
-                 nf:'<span style="color:var(--red)">⚠ 못찾음</span>'};
+                 nf:'<span style="color:var(--red)">⚠ 못찾음</span>',
+                 nomonth:'<span style="color:var(--red)">⚠ 월없음</span>'};
     document.getElementById('wbTable').innerHTML=
-      `<thead><tr><th>상태</th><th>수험번호</th><th>이름</th><th>반</th><th>정규${N}월 현재</th><th>쓸 값</th></tr></thead><tbody>`+
-      rows.map(r=>`<tr><td>${badge[r.state]}</td><td class="mono">${r.sid}</td><td>${r.name||''}</td><td>${r.ban||''}</td><td class="mono">${r.cur||'<span style=\"color:var(--muted)\">(빈칸)</span>'}</td><td class="mono">${r.state==='write'?`${mm}/${dd}`:'—'}</td></tr>`).join('')+
+      `<thead><tr><th>상태</th><th>수험번호</th><th>이름</th><th>반</th><th>기입 열</th><th>현재값</th><th>쓸 값</th><th>내역</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr><td>${badge[r.state]}</td><td class="mono">${r.sid}</td><td>${r.name||''}</td><td>${r.ban||''}</td><td>${r.col}</td><td class="mono">${r.cur||'<span style=\"color:var(--muted)\">(빈칸)</span>'}</td><td class="mono">${r.state==='write'?`${mm}/${dd}`:'—'}</td><td class="note">${r.cohort||''}</td></tr>`).join('')+
       `</tbody>`;
-    document.getElementById('wbSummary').innerHTML=`✅ 기입 ${toWrite} · ⏭ 건너뜀 ${skip} · ⚠ 못찾음 ${nf}`;
+    const gsum=Object.keys(groups).sort((a,b)=>a-b).map(M=>`정규${M}월 ${groups[M].length}명`).join(' · ')||'없음';
+    document.getElementById('wbSummary').innerHTML=`✅ 기입 ${toWrite} (${gsum}) · ⏭ 건너뜀 ${skip} · ⚠ 못찾음 ${nf} · 월없음 ${nomonth}`;
     const applyBtn=document.getElementById('wbApplyBtn');
     applyBtn.disabled = toWrite===0;
     applyBtn.textContent = `학생명단에 ${toWrite}명 기입 실행`;
-    document.getElementById('wbApplyNote').innerHTML = nf>0
-      ? `<span style="color:var(--red)">⚠ 못찾음 ${nf}명이 있어요. 수험번호를 확인하세요(기입엔 포함 안 됨).</span>` : '';
+    const warns=[]; if(nf) warns.push(`못찾음 ${nf}명`); if(nomonth) warns.push(`월 판정 실패 ${nomonth}명`);
+    document.getElementById('wbApplyNote').innerHTML = warns.length
+      ? `<span style="color:var(--red)">⚠ ${warns.join(', ')} — 기입엔 포함 안 됨. 확인하세요.</span>` : '';
     document.getElementById('wbPanel').style.display='block';
     note.textContent='';
     document.getElementById('wbPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -1562,14 +1566,21 @@ document.getElementById('writebackBtn').onclick=async()=>{
 };
 document.getElementById('wbCancelBtn').onclick=()=>{ document.getElementById('wbPanel').style.display='none'; WB=null; };
 document.getElementById('wbApplyBtn').onclick=async()=>{
-  if(!WB||!WB.sids.length) return;
-  if(!confirm(`학생명단 정규${WB.month}월 칸에 ${WB.mm}/${WB.day}를 ${WB.sids.length}명에게 기입합니다.\n빈 칸에만 기입되며 기존 값은 건드리지 않습니다. 진행할까요?`)) return;
+  if(!WB||!Object.keys(WB.groups).length) return;
+  const months=Object.keys(WB.groups).sort((a,b)=>a-b);
+  const total=months.reduce((a,M)=>a+WB.groups[M].length,0);
+  const desc=months.map(M=>`정규${M}월 ${WB.groups[M].length}명`).join(', ');
+  if(!confirm(`학생명단에 ${WB.mm}/${WB.day}를 기입합니다.\n${desc}\n빈 칸에만 기입되며 기존 값은 안 건드립니다. 진행할까요?`)) return;
   const btn=document.getElementById('wbApplyBtn'); btn.disabled=true; btn.textContent='기입 중…';
   const note=document.getElementById('wbApplyNote');
   try{
-    const r=await writeRosterDates(WB.month, WB.year, WB.day, WB.sids);
-    note.innerHTML=`✅ 기입 ${r.written.length} · 건너뜀 ${r.skipped.length} · 못찾음 ${r.notFound.length}`;
-    toast(`✅ ${r.written.length}명 기입 완료`);
+    let W=0,S=0,NF=0;
+    for(const M of months){
+      const r=await writeRosterDates(+M, WB.year, WB.day, WB.groups[M]);
+      W+=r.written.length; S+=r.skipped.length; NF+=r.notFound.length;
+    }
+    note.innerHTML=`✅ 기입 ${W} · 건너뜀 ${S} · 못찾음 ${NF}`;
+    toast(`✅ ${W}명 기입 완료`);
     btn.textContent='완료됨';
   }catch(e){ console.error(e);
     note.innerHTML=`<span style="color:var(--red)">⚠ 기입 실패: ${e.message||e}</span>`;
