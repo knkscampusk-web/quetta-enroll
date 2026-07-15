@@ -745,8 +745,20 @@ const GYE_FIXED='미적/확통';
 /* ===================================================================
  * 4-R) 학생명단(등록잡기) 기반 집계 — 월별 재등록 날짜 칸으로 절대값 계산
  * =================================================================== */
-// "M/D" → 비교용 정수(월*100+일). 빈값이면 null
-function mdNum(v){ const s=String(v||'').trim(); const m=s.match(/^(\d{1,2})\/(\d{1,2})$/); return m? (+m[1])*100+(+m[2]) : null; }
+// "M/D" 또는 ISO("2026-07-05T15:00:00.000Z") → 비교용 정수(월*100+일). 빈값이면 null
+// ISO는 UTC라 KST(+9h)로 보정해야 날짜가 맞음 (예: 07-05T15:00Z → KST 07-06)
+function mdNum(v){
+  const s=String(v||'').trim(); if(!s) return null;
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if(m) return (+m[1])*100+(+m[2]);
+  // ISO 날짜/시간
+  const t=Date.parse(s);
+  if(!isNaN(t)){ const k=new Date(t+9*3600*1000); return (k.getUTCMonth()+1)*100+k.getUTCDate(); }
+  // 'YYYY-MM-DD'만 있는 경우
+  m=s.match(/^\d{4}-(\d{2})-(\d{2})/);
+  if(m) return (+m[1])*100+(+m[2]);
+  return null;
+}
 // 앱 날짜 '2026-07-06' → 706
 function dateToMd(d){ const m=String(d||'').match(/^\d{4}-(\d{2})-(\d{2})$/); return m? (+m[1])*100+(+m[2]) : null; }
 // 학생명단 rows(2D배열) 파싱: 헤더 인덱스 + 학생 객체
