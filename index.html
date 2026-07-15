@@ -269,7 +269,6 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row" style="margin-top:16px">
       <button class="btn pri" id="rosterBtn">학생명단으로 등록잡기</button>
       <button class="btn" id="writebackBtn">학생명단에 재등록일 기입(미리보기)</button>
-      <button class="btn" id="processBtn" disabled>처리하기(수동 업로드)</button>
       <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
       <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
       <span class="note" id="inputNote">권장: <b>학생명단으로 등록잡기</b> — 구글시트 학생명단(월별 재등록일)으로 편성·재등록·미납을 한 번에 계산합니다.</span>
@@ -548,8 +547,8 @@ async function writeRosterDates(month, year, day, sids){
   return j; // {written[], skipped[], notFound[]}
 }
 async function fetchSheet(which){
-  const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}`;
-  const res=await fetch(url);
+  const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}&_t=${Date.now()}`;
+  const res=await fetch(url, {cache:'no-store'});
   const j=await res.json();
   if(j.error) throw new Error(j.error);
   if(!Array.isArray(j.rows)) throw new Error('rows 없음');
@@ -1479,17 +1478,12 @@ function wireDrop(dropId,inputId,nameId,kind){
   ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
   drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]); });
 }
-function checkReady(){ document.getElementById('processBtn').disabled = !(STATE.daily && STATE.master); }
+function checkReady(){ const b=document.getElementById('processBtn'); if(b) b.disabled = !(STATE.daily && STATE.master); }
 
 wireDrop('dropDaily','fileDaily','nameDaily','daily');
 wireDrop('dropMaster','fileMaster','nameMaster','master');
 wireDrop('dropReceipt','fileReceipt','nameReceipt','receipt');
 
-document.getElementById('processBtn').onclick=()=>{
-  if(!document.getElementById('baseDate').value){ toast('기준 날짜를 선택하세요'); return; }
-  CFG.writer=document.getElementById('writer').value||CFG.writer;
-  aggregate(); switchTab('dash'); toast('처리 완료');
-};
 // 학생명단(등록잡기) 기반 처리 — 구글시트에서 학생명단 + 접수현황 로드 후 집계
 document.getElementById('rosterBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
