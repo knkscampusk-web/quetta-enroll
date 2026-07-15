@@ -267,10 +267,11 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       </label>
     </div>
     <div class="row" style="margin-top:16px">
-      <button class="btn pri" id="processBtn" disabled>처리하기</button>
+      <button class="btn pri" id="rosterBtn">학생명단으로 등록잡기</button>
+      <button class="btn" id="processBtn" disabled>처리하기(수동 업로드)</button>
       <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
       <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
-      <span class="note" id="inputNote">①·② 업로드 후 처리하세요. ③ 접수현황은 접수·합격 칸을 채울 때 필요합니다.</span>
+      <span class="note" id="inputNote">권장: <b>학생명단으로 등록잡기</b> — 구글시트 학생명단(월별 재등록일)으로 편성·재등록·미납을 한 번에 계산합니다.</span>
     </div>
     <div class="note" id="gsNote" style="margin-top:8px"></div>
 
@@ -741,6 +742,104 @@ const DEFAULT_JH=['장학퀀텀_0T','장학퀀텀_4T','장학퀀텀_6T','장학�
 const JANG_LIST=['교습100+기100+교재100+콘100','교습100+독100+교재100','교습100+교재100','교습80+교재50','교습50+교재50','교습30','교습20'];
 const GYE_FIXED='미적/확통';
 
+/* ===================================================================
+ * 4-R) 학생명단(등록잡기) 기반 집계 — 월별 재등록 날짜 칸으로 절대값 계산
+ * =================================================================== */
+// "M/D" → 비교용 정수(월*100+일). 빈값이면 null
+function mdNum(v){ const s=String(v||'').trim(); const m=s.match(/^(\d{1,2})\/(\d{1,2})$/); return m? (+m[1])*100+(+m[2]) : null; }
+// 앱 날짜 '2026-07-06' → 706
+function dateToMd(d){ const m=String(d||'').match(/^\d{4}-(\d{2})-(\d{2})$/); return m? (+m[1])*100+(+m[2]) : null; }
+// 학생명단 rows(2D배열) 파싱: 헤더 인덱스 + 학생 객체
+function parseRoster(rows){
+  const hdr=(rows[0]||[]).map(h=>String(h||'').trim());
+  const norm=s=>String(s).replace(/\s/g,'');
+  const find=names=>{ for(const n of names){ const i=hdr.findIndex(h=>norm(h)===norm(n)); if(i>=0) return i; } return -1; };
+  const monthCol=N=>hdr.findIndex(h=>norm(h)===`정규${N}월`); // '정규7월'
+  const idx={ ban:find(['반']), sex:find(['성별']), name:find(['성명','이름']),
+    sid:find(['수험번호']), jh:find(['전형방법']), gye:find(['계열']),
+    jang:find(['장학대상']), inDate:find(['입소일']), outDate:find(['퇴소일']) };
+  const students=rows.slice(1).map(r=>({
+    ban:String(r[idx.ban]||'').trim(), sex:String(r[idx.sex]||'').trim(),
+    name:String(r[idx.name]||'').trim(), sid:norm(r[idx.sid]||''),
+    jh:String(r[idx.jh]||'').trim(), gye:String(r[idx.gye]||'').trim(),
+    jang:String(r[idx.jang]||'').trim(),
+    out:mdNum(r[idx.outDate]), _row:r
+  }));
+  return { hdr, monthCol, students };
+}
+// billMonth(N) 기준 집계: 절대값(as of date). carry 불필요
+function aggregateRoster(){
+  const R=STATE.rosterData; const base=document.getElementById('baseDate').value;
+  const season=document.getElementById('season').value;
+  const writer=document.getElementById('writer').value||'';
+  const N=parseInt(CFG.billMonth)||0;
+  const warnings=[];
+  if(!R){ toast('학생명단을 먼저 불러오세요'); return; }
+  if(!base){ toast('기준 날짜를 선택하세요'); return; }
+  if(!N){ toast('설정에서 현재 집계월을 먼저 지정하세요'); return; }
+  const banList=(CFG.banList&&CFG.banList.length?CFG.banList:DEFAULT_BANS);
+  const jhList =(CFG.jhList &&CFG.jhList.length ?CFG.jhList :DEFAULT_JH);
+  const Dmd=dateToMd(base);
+  const currCol=R.monthCol(N), prevCol=R.monthCol(N-1);
+  if(currCol<0){ toast(`학생명단에 '정규${N}월' 열이 없어요`); return; }
+
+  const zero=()=>({편성:0,신규:0,신규남:0,신규여:0,퇴소:0,퇴소남:0,퇴소여:0,
+    재등록:0,재등록남:0,재등록여:0,재등록환불:0,재등록환불남:0,재등록환불여:0,
+    편성계:0,등록계:0,미납:0,전일편성:0,전일등록:0,편입:0,반수:0,장학등록:0,장학환불:0});
+  const perBan={}; for(const b of [...banList,'미배정']) perBan[b]=zero();
+  const pb=ban=>{ const k=banList.includes(ban)?ban:'미배정'; if(!perBan[k]) perBan[k]=zero(); return perBan[k]; };
+  const isReal=ban=>banList.includes(ban);
+
+  for(const st of R.students){
+    if(!isReal(st.ban)) continue;              // 실제 반만(잡동사니 행 제외)
+    const b=pb(st.ban); const sex=st.sex;
+    const curr=mdNum(st._row[currCol]);        // 당월 재등록일
+    const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
+    const out=st.out;                          // 퇴소일
+    const enrolledD  = (out==null||out>Dmd);   // D 시점 재원
+    const currByD    = (curr!=null&&curr<=Dmd);
+    const currByPrev = (curr!=null&&curr<=Dmd-1); // 전일까지 (근사: Dmd-1은 같은달 가정)
+    const outByD     = (out!=null&&out<=Dmd);
+    // 편성계(재원, 절대): 반 배정 & 미퇴소(≤D)
+    if(!outByD) b.편성계++;
+    // 등록계(당월 재등록 누적, ≤D)
+    if(currByD) b.등록계++;
+    // 미납: 전월 등록 & 당월 미등록(≤D) & 미퇴소(≤D)
+    if(prev!=null && !currByD && !outByD) b.미납++;
+    // 금일 재등록
+    if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++;
+      // 금일 신규(편입) = 당월 등록 & 전월 없음
+      if(prev==null){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
+      if(st.jang){ const L=jangCodeToLabel(st.jang); if(L) b.장학등록++; }
+    }
+    // 금일 퇴소
+    if(out===Dmd){ b.퇴소++; b.재등록환불++; if(sex==='남'){b.퇴소남++;b.재등록환불남++;} else if(sex==='여'){b.퇴소여++;b.재등록환불여++;} }
+    // 전일값(표시용): 절대 − 금일delta
+    b.전일편성 = b.편성계 - (b.신규||0) + (b.퇴소||0);
+    b.전일등록 = b.등록계 - (b.재등록||0) + (b.재등록환불||0);
+  }
+
+  // 전형별 접수(개강전 블록) — 접수 시트에서
+  const perJh={}; for(const jh of jhList){ const r=RC&&RC.byJh&&RC.byJh[jh]; perJh[jh]={접수:r?r.접수:'',합격:r?(jh==='유시험 전형'?'':r.접수):''}; }
+  // 장학 라벨별(당월 재등록 학생의 장학대상 코드)
+  const perJang={}; for(const L of JANG_LIST) perJang[L]={등록:0,환불:0,등록남:0,등록여:0};
+  const unmapped=new Set();
+  for(const st of R.students){ if(!isReal(st.ban)||!st.jang) continue;
+    const curr=mdNum(st._row[currCol]); if(curr!==Dmd) continue;
+    const L=jangCodeToLabel(st.jang); if(!L){ unmapped.add(st.jang); continue; }
+    perJang[L].등록++; if(st.sex==='남') perJang[L].등록남++; else if(st.sex==='여') perJang[L].등록여++;
+  }
+  if(unmapped.size) warnings.push(`미매핑 장학코드: ${[...unmapped].join(', ')} → 설정 > 장학 코드 매핑`);
+
+  const totalRoster=R.students.filter(s=>isReal(s.ban)).length;
+  const reg=Object.values(perBan).reduce((a,b)=>a+(b.재등록||0),0);
+  const ref=Object.values(perBan).reduce((a,b)=>a+(b.퇴소||0),0);
+  const newc=Object.values(perBan).reduce((a,b)=>a+(b.신규||0),0);
+  STATE.result={ base, writer, season, banList, jhList, perBan, perJh, perJang,
+    totalRoster, reg, ref, newc, warnings, _roster:true };
+  renderDash(); renderRaw();
+}
+
 function aggregate(){
   const D=STATE.daily, M=STATE.master, RC=STATE.receipt;
   const base=document.getElementById('baseDate').value;
@@ -849,12 +948,14 @@ async function renderDash(){
          재등록:0,재등록남:0,재등록여:0,재등록환불:0,등록계:0,미납:0,전일편성:0,전일등록:0};
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
-    const 전일편성=prevOf(ban,'편성계', b.편성||0);
-    const 전일등록=prevOf(ban,'등록계', 0);
-    b.전일편성=전일편성; b.전일등록=전일등록;
-    b.편성계 = 전일편성 + (b.신규||0) - (b.퇴소||0);
-    b.등록계 = 전일등록 + (b.재등록||0) - (b.재등록환불||0);
-    b.미납   = b.편성계 - b.등록계;
+    if(!R._roster){
+      const 전일편성=prevOf(ban,'편성계', b.편성||0);
+      const 전일등록=prevOf(ban,'등록계', 0);
+      b.전일편성=전일편성; b.전일등록=전일등록;
+      b.편성계 = 전일편성 + (b.신규||0) - (b.퇴소||0);
+      b.등록계 = 전일등록 + (b.재등록||0) - (b.재등록환불||0);
+      b.미납   = b.편성계 - b.등록계;
+    }
     T.신규+=b.신규||0; T.신규남+=b.신규남||0; T.신규여+=b.신규여||0;
     T.퇴소+=b.퇴소||0; T.퇴소남+=b.퇴소남||0; T.퇴소여+=b.퇴소여||0;
     T.재등록+=b.재등록||0; T.재등록남+=b.재등록남||0; T.재등록여+=b.재등록여||0;
@@ -870,7 +971,7 @@ async function renderDash(){
   document.getElementById('heroSub').innerHTML=
     (R._historical?`<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거</span> `:``)+
     `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`;
-  const _live0 = !R._historical && !R._cumulative;
+  const _live0 = !R._historical && !R._cumulative && !R._roster;
   document.getElementById('heroMini').innerHTML=
     `<div class="hp">편성계<b>${T.편성계}</b></div>`+
     `<div class="hp">재등록<b>${T.재등록}</b></div>`+
@@ -925,7 +1026,7 @@ async function renderDash(){
     `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
 
   // ② 재등록 표 (등록−미등록)
-  const isLive = !R._historical && !R._cumulative;
+  const isLive = !R._historical && !R._cumulative && !R._roster;
   const r2=[];
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
@@ -1348,6 +1449,25 @@ document.getElementById('processBtn').onclick=()=>{
   if(!document.getElementById('baseDate').value){ toast('기준 날짜를 선택하세요'); return; }
   CFG.writer=document.getElementById('writer').value||CFG.writer;
   aggregate(); switchTab('dash'); toast('처리 완료');
+};
+// 학생명단(등록잡기) 기반 처리 — 구글시트에서 학생명단 + 접수현황 로드 후 집계
+document.getElementById('rosterBtn').onclick=async()=>{
+  const note=document.getElementById('gsNote');
+  const date=document.getElementById('baseDate').value;
+  if(!date){ toast('기준 날짜를 먼저 선택하세요'); return; }
+  if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
+  note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
+  try{
+    const [ro,rc]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null)]);
+    STATE.rosterData=parseRoster(ro.rows);
+    if(rc) STATE.receipt=parseReceiptRows(rc.rows);
+    const n=STATE.rosterData.students.filter(s=>(CFG.banList||DEFAULT_BANS).includes(s.ban)).length;
+    note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
+    aggregateRoster();
+    switchTab('dash');
+  }catch(e){ console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ 불러오기 실패: ${e.message||e}</span> — 웹앱에 roster 소스가 배포됐는지 확인하세요.`;
+  }
 };
 // 경영지원(Supabase)에서 그날 일일명단 자동 로드
 document.getElementById('sbDailyBtn').onclick=async()=>{
