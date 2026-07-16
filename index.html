@@ -230,6 +230,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <button data-tab="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>대시보드</button>
   <button data-tab="raw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>raw 출력</button>
   <button data-tab="hist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>지난 등록 보기</button>
+  <button data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>분석</button>
 </nav>
 
 <main>
@@ -391,6 +392,39 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div id="histView" style="display:none">
     <button class="backbtn" id="histBack">← 날짜 목록으로</button>
     <div id="histBody"></div>
+  </div>
+</section>
+
+<!-- ===== 분석 ===== -->
+<section class="tab" id="tab-analysis">
+  <div class="card">
+    <h3><span class="pin"></span> 등록/환불 추이 분석 — 전년 동기 비교</h3>
+    <div class="desc">일자별누적(원장님) 자료를 연도별로 올리면, 등록·환불·등록인원 추이를 겹쳐 비교합니다. 파일 제목의 연도([25년…]/[26년…])를 자동 인식합니다.</div>
+    <div class="row">
+      <label class="drop" id="dropRep" style="flex:1">
+        <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
+        <div><b>일자별누적 파일 올리기</b><br><span class="note" id="repNames">CSV 또는 엑셀 · 여러 개 한 번에 가능</span></div>
+      </label>
+    </div>
+    <div class="row" style="margin-top:14px;align-items:center;gap:14px;flex-wrap:wrap">
+      <div class="field"><label>지표</label>
+        <select id="anMetric">
+          <option value="금일등록">금일 등록</option>
+          <option value="금일환불">금일 환불</option>
+          <option value="등록인원">등록인원(누적)</option>
+          <option value="cumReg">등록 누적합</option>
+          <option value="cumRef">환불 누적합</option>
+        </select>
+      </div>
+      <div class="field"><label>X축</label>
+        <select id="anAxis"><option value="dday">개강 D-day</option><option value="cal">달력 날짜</option></select>
+      </div>
+      <div class="field"><label>구간(월)</label>
+        <select id="anRange"><option value="0">전체</option><option value="1">1개월</option><option value="3">3개월</option><option value="6">6개월</option></select>
+      </div>
+    </div>
+    <div id="anChart" style="margin-top:16px"></div>
+    <div class="note" id="anLegend" style="margin-top:8px"></div>
   </div>
 </section>
 
@@ -692,6 +726,108 @@ function switchTab(name){
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 document.getElementById('settingsFab').onclick=()=>switchTab('set');
 document.getElementById('setBack').onclick=()=>switchTab('dash');
+
+/* ===================================================================
+ * 분석 — 일자별누적 전년 동기 비교
+ * =================================================================== */
+const AN={ series:{} }; // {year: [{mo,dy,금일등록,금일환불,등록인원,idx}]}
+const AN_COLORS={2025:'#7E8CC6',2026:'#00B2BE',2024:'#E5943A',2027:'#C0577B'};
+function parseDailyReport(rows){
+  // 제목행에서 연도 인식 [25년…]/[26년…]
+  let year=null;
+  for(const r of rows.slice(0,3)){ const m=String(r[0]||'').match(/\[(\d{2})년/); if(m){ year=2000+ +m[1]; break; } }
+  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
+  if(hi<0) return null;
+  const out=[];
+  for(const r of rows.slice(hi+1)){
+    const d=String(r[0]||'').trim();
+    if(d==='계') break;           // 첫 표 끝 — 이후(반수 등) 무시
+    if(!d) continue;
+    const m=d.match(/(\d{1,2})\/(\d{1,2})/); if(!m) continue;
+    const n=x=>{ const v=parseInt(String(x).replace(/[^\-0-9]/g,'')); return isNaN(v)?0:v; };
+    out.push({mo:+m[1],dy:+m[2],금일등록:n(r[2]),금일환불:n(r[3]),등록인원:n(r[4])});
+  }
+  out.forEach((o,i)=>o.idx=i); // D-day(개강기준 순번)
+  // 누적합
+  let cr=0,cf=0; out.forEach(o=>{ cr+=o.금일등록; cf+=o.금일환불; o.cumReg=cr; o.cumRef=cf; });
+  return { year, data:out };
+}
+async function loadReportFile(file){
+  let rows;
+  if(/\.(xlsx|xls)$/i.test(file.name)){
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+  } else {
+    const txt=await file.text();
+    rows=txt.split(/\r?\n/).map(l=>l.split(','));
+  }
+  const p=parseDailyReport(rows);
+  if(!p){ toast(`${file.name}: 형식 인식 실패`); return; }
+  const yr=p.year||('파일'+Object.keys(AN.series).length);
+  AN.series[yr]=p.data;
+  return yr;
+}
+(function wireAnalysis(){
+  const drop=document.getElementById('dropRep'), inp=document.getElementById('fileRep');
+  if(!drop) return;
+  drop.onclick=()=>inp.click();
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};
+  drop.ondragleave=()=>drop.classList.remove('drag');
+  drop.ondrop=async e=>{e.preventDefault();drop.classList.remove('drag'); await handleRepFiles(e.dataTransfer.files);};
+  inp.onchange=async()=>{ await handleRepFiles(inp.files); };
+  ['anMetric','anAxis','anRange'].forEach(id=>document.getElementById(id).onchange=drawAnalysis);
+  async function handleRepFiles(files){
+    const names=[];
+    for(const f of files){ const yr=await loadReportFile(f); if(yr) names.push(yr); }
+    document.getElementById('repNames').textContent=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'}`;
+    drawAnalysis();
+  }
+})();
+function drawAnalysis(){
+  const box=document.getElementById('anChart'); if(!box) return;
+  const years=Object.keys(AN.series).sort();
+  if(!years.length){ box.innerHTML=`<div class="note">일자별누적 파일을 올려주세요.</div>`; return; }
+  const metric=document.getElementById('anMetric').value;
+  const axis=document.getElementById('anAxis').value;
+  const range=parseInt(document.getElementById('anRange').value)||0;
+  // 시리즈 구성
+  const series=years.map(y=>{
+    let d=AN.series[y];
+    if(range>0) d=d.filter(o=>o.idx< range*31);
+    return { year:y, pts:d.map(o=>({ x: axis==='dday'?o.idx : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy })) };
+  });
+  // 범위
+  const allX=series.flatMap(s=>s.pts.map(p=>p.x));
+  const allY=series.flatMap(s=>s.pts.map(p=>p.y));
+  if(!allX.length){ box.innerHTML='<div class="note">데이터 없음</div>'; return; }
+  const minX=Math.min(...allX),maxX=Math.max(...allX);
+  let minY=Math.min(0,...allY),maxY=Math.max(...allY,1);
+  const W=920,Hh=420,pad={l:56,r:20,t:20,b:46};
+  const sx=x=>pad.l+(x-minX)/((maxX-minX)||1)*(W-pad.l-pad.r);
+  const sy=y=>Hh-pad.b-(y-minY)/((maxY-minY)||1)*(Hh-pad.t-pad.b);
+  // 격자/축 눈금
+  const yticks=5, grid=[];
+  for(let i=0;i<=yticks;i++){ const yv=minY+(maxY-minY)*i/yticks; const yy=sy(yv);
+    grid.push(`<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/><text x="${pad.l-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(yv)}</text>`); }
+  // X 눈금 (달력이면 월표시, dday면 숫자)
+  const xticks=8, xg=[];
+  for(let i=0;i<=xticks;i++){ const xv=minX+(maxX-minX)*i/xticks; const xx=sx(xv);
+    let lbl = axis==='dday'? Math.round(xv) : `${Math.floor(xv/100)}/${String(Math.round(xv%100)).padStart(2,'0')}`;
+    xg.push(`<text x="${xx}" y="${Hh-pad.b+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${lbl}</text>`); }
+  // 0선
+  const zero = minY<0&&maxY>0 ? `<line x1="${pad.l}" y1="${sy(0)}" x2="${W-pad.r}" y2="${sy(0)}" stroke="var(--ink)" stroke-width="1" opacity=".25"/>`:'';
+  // 라인
+  const paths=series.map(s=>{
+    const col=AN_COLORS[s.year]||'#888';
+    const dpath=s.pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
+    return `<path d="${dpath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>`;
+  }).join('');
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${xg.join('')}${zero}${paths}</svg>`;
+  document.getElementById('anLegend').innerHTML='범례: '+series.map(s=>`<span style="color:${AN_COLORS[s.year]||'#888'};font-weight:700">● ${s.year}</span>`).join('  ')+
+    (axis==='dday'?' · X축=개강 첫 보고일부터 경과일':' · X축=달력(월/일)');
+}
+
 
 /* ===================================================================
  * 3) 유틸 / 파서
