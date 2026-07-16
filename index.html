@@ -537,11 +537,11 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E9OoDXv7LP8rxQgz155uRklPEWBEs_uMfF3aKbpCaddfiuUA/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
-// 학생명단 정규N월 칸에 재등록일 기입 (빈 칸만, 수험번호 매칭 — 서버에서 재확인)
-async function writeRosterDates(month, year, day, sids){
+// 학생명단 정규N월 칸(month)에 기준일(wy/wm/wd) 기입 (빈 칸만, 수험번호 매칭)
+async function writeRosterDates(month, wy, wm, wd, sids){
   const res=await fetch(GS_URL, { method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'}, // CORS preflight 회피
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, month, year, day, sids }) });
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, month, wy, wm, wd, sids }) });
   const j=await res.json();
   if(j.error) throw new Error(j.error);
   return j; // {written[], skipped[], notFound[]}
@@ -1570,7 +1570,7 @@ document.getElementById('wbApplyBtn').onclick=async()=>{
   try{
     let W=0,S=0,NF=0;
     for(const M of months){
-      const r=await writeRosterDates(+M, WB.year, WB.day, WB.groups[M]);
+      const r=await writeRosterDates(+M, WB.year, WB.mm, WB.day, WB.groups[M]);
       W+=r.written.length; S+=r.skipped.length; NF+=r.notFound.length;
     }
     note.innerHTML=`✅ 기입 ${W} · 건너뜀 ${S} · 못찾음 ${NF}`;
