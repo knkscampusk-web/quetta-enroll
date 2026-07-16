@@ -269,6 +269,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row" style="margin-top:16px">
       <button class="btn pri" id="rosterBtn">학생명단으로 등록잡기</button>
       <button class="btn" id="writebackBtn">학생명단에 재등록일 기입(미리보기)</button>
+      <button class="btn" id="refundBtn">환불자 이동(미리보기)</button>
       <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
       <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
       <span class="note" id="inputNote">권장: <b>학생명단으로 등록잡기</b> — 구글시트 학생명단(월별 재등록일)으로 편성·재등록·미납을 한 번에 계산합니다.</span>
@@ -537,6 +538,15 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E9OoDXv7LP8rxQgz155uRklPEWBEs_uMfF3aKbpCaddfiuUA/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
+// 환불자 이동: 학생명단 행 → 환불 시트 이동 후 삭제 (퇴소일=기준일)
+async function moveRefunders(wy, wm, wd, sids){
+  const res=await fetch(GS_URL, { method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'refund', wy, wm, wd, sids }) });
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  return j; // {moved[], notFound[]}
+}
 // 학생명단 정규N월 칸(month)에 기준일(wy/wm/wd) 기입 (빈 칸만, 수험번호 매칭)
 async function writeRosterDates(month, wy, wm, wd, sids){
   const res=await fetch(GS_URL, { method:'POST',
@@ -1548,6 +1558,7 @@ document.getElementById('writebackBtn').onclick=async()=>{
     const applyBtn=document.getElementById('wbApplyBtn');
     applyBtn.disabled = toWrite===0;
     applyBtn.textContent = `학생명단에 ${toWrite}명 기입 실행`;
+    applyBtn.dataset.mode='write';
     const warns=[]; if(nf) warns.push(`못찾음 ${nf}명`); if(nomonth) warns.push(`월 판정 실패 ${nomonth}명`);
     document.getElementById('wbApplyNote').innerHTML = warns.length
       ? `<span style="color:var(--red)">⚠ ${warns.join(', ')} — 기입엔 포함 안 됨. 확인하세요.</span>` : '';
@@ -1560,13 +1571,30 @@ document.getElementById('writebackBtn').onclick=async()=>{
 };
 document.getElementById('wbCancelBtn').onclick=()=>{ document.getElementById('wbPanel').style.display='none'; WB=null; };
 document.getElementById('wbApplyBtn').onclick=async()=>{
+  const btn=document.getElementById('wbApplyBtn');
+  const note=document.getElementById('wbApplyNote');
+  // 환불 모드
+  if(btn.dataset.mode==='refund'){
+    if(!RF||!RF.sids.length) return;
+    if(!confirm(`환불자 ${RF.sids.length}명을 '환불' 시트로 옮기고 학생명단에서 삭제합니다.\n(환불 시트에 먼저 복사 후 삭제 — 되돌릴 수 없습니다.)\n진행할까요?`)) return;
+    btn.disabled=true; btn.textContent='이동 중…';
+    try{
+      const r=await moveRefunders(RF.year, RF.mm, RF.day, RF.sids);
+      note.innerHTML=`✅ 이동·삭제 ${r.moved.length} · 명단에 없음 ${r.notFound.length}`;
+      toast(`✅ ${r.moved.length}명 환불 이동 완료`);
+      btn.textContent='완료됨';
+    }catch(e){ console.error(e);
+      note.innerHTML=`<span style="color:var(--red)">⚠ 이동 실패: ${e.message||e}</span>`;
+      btn.disabled=false; btn.textContent='다시 시도';
+    }
+    return;
+  }
+  // 재등록일 기입 모드
   if(!WB||!Object.keys(WB.groups).length) return;
   const months=Object.keys(WB.groups).sort((a,b)=>a-b);
-  const total=months.reduce((a,M)=>a+WB.groups[M].length,0);
   const desc=months.map(M=>`정규${M}월 ${WB.groups[M].length}명`).join(', ');
   if(!confirm(`학생명단에 ${WB.mm}/${WB.day}를 기입합니다.\n${desc}\n빈 칸에만 기입되며 기존 값은 안 건드립니다. 진행할까요?`)) return;
-  const btn=document.getElementById('wbApplyBtn'); btn.disabled=true; btn.textContent='기입 중…';
-  const note=document.getElementById('wbApplyNote');
+  btn.disabled=true; btn.textContent='기입 중…';
   try{
     let W=0,S=0,NF=0;
     for(const M of months){
@@ -1581,6 +1609,49 @@ document.getElementById('wbApplyBtn').onclick=async()=>{
     btn.disabled=false; btn.textContent='다시 시도';
   }
 };
+
+// ── 환불자 이동 (미리보기 → 실행): 학생명단 → 환불 시트, 원본 삭제 ──
+let RF=null;
+document.getElementById('refundBtn').onclick=async()=>{
+  const note=document.getElementById('gsNote');
+  const date=document.getElementById('baseDate').value;
+  if(!date){ toast('기준 날짜를 먼저 선택하세요'); return; }
+  note.textContent='경영지원 환불자 + 학생명단 대조 중…';
+  try{
+    const ro=await fetchSheet('roster'); STATE.rosterData=parseRoster(ro.rows);
+    const daily=await buildDailyFromSb(date);
+    const refunders=daily.ref; // {sid,name,cohort,jang}
+    const R=STATE.rosterData;
+    const bySid={}; for(const st of R.students){ if(st.sid) bySid[st.sid]=st; }
+    const [yy,mm,dd]=[+date.slice(0,4), +date.slice(5,7), +date.slice(8,10)];
+    const rows=[]; const sids=[]; let move=0, nf=0;
+    for(const p of refunders){
+      const st=bySid[p.sid];
+      if(!st){ rows.push({state:'nf', sid:p.sid, name:p.name, ban:'', cohort:p.cohort}); nf++; continue; }
+      rows.push({state:'move', sid:p.sid, name:st.name||p.name, ban:st.ban, cohort:p.cohort}); sids.push(p.sid); move++;
+    }
+    RF={ year:yy, mm, day:dd, sids };
+    const badge={move:'<span style="color:var(--red)">➡ 이동·삭제</span>', nf:'<span style="color:var(--muted)">⚠ 명단에 없음</span>'};
+    document.getElementById('wbTable').innerHTML=
+      `<thead><tr><th>상태</th><th>수험번호</th><th>이름</th><th>반</th><th>퇴소일</th><th>내역</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr><td>${badge[r.state]}</td><td class="mono">${r.sid}</td><td>${r.name||''}</td><td>${r.ban||''}</td><td class="mono">${r.state==='move'?`${mm}/${dd}`:'—'}</td><td class="note">${r.cohort||''}</td></tr>`).join('')+
+      `</tbody>`;
+    document.getElementById('wbSummary').innerHTML=`➡ 이동·삭제 ${move} · ⚠ 명단에 없음 ${nf}`;
+    const applyBtn=document.getElementById('wbApplyBtn');
+    applyBtn.disabled = move===0;
+    applyBtn.textContent = `환불 시트로 ${move}명 이동 + 학생명단에서 삭제`;
+    applyBtn.dataset.mode='refund';
+    document.getElementById('wbApplyNote').innerHTML = nf>0
+      ? `<span style="color:var(--red)">⚠ 명단에 없는 ${nf}명은 이동 안 함(이미 이동됐거나 수험번호 확인).</span>`
+      : `<span style="color:var(--red)">⚠ 실행하면 학생명단에서 행이 삭제됩니다. 환불 시트로 옮긴 뒤 삭제해요.</span>`;
+    document.getElementById('wbPanel').style.display='block';
+    note.textContent='';
+    document.getElementById('wbPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }catch(e){ console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ 미리보기 실패: ${e.message||e}</span>`;
+  }
+};
+
 // 경영지원(Supabase)에서 그날 일일명단 자동 로드
 document.getElementById('sbDailyBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
