@@ -207,8 +207,18 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="logo">GOOD BETTER BEST</div>
     <h2>일일 등록 보고</h2>
     <p>강남대성기숙 QUETTA · 행정실</p>
-    <input id="gatePw" type="password" placeholder="팀 비밀번호" autocomplete="off" />
-    <button id="gateBtn">입장</button>
+
+    <div id="gateRole">
+      <button id="roleViewer" style="background:var(--panel2);color:var(--teal-ink);box-shadow:none;border:1px solid var(--line)">뷰어로 보기 (대표·원장)</button>
+      <button id="roleStaff">실무 로그인 (행정실)</button>
+    </div>
+
+    <div id="gatePwStep" style="display:none">
+      <input id="gatePw" type="password" placeholder="팀 비밀번호" autocomplete="off" />
+      <button id="gateBtn">입장</button>
+      <div class="small"><a id="roleBack">← 뒤로</a></div>
+    </div>
+
     <div class="err" id="gateErr"></div>
     <div class="small">
       처음이세요? <a id="setupLink">초기 설정(Firebase·비번)</a>
@@ -400,7 +410,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div class="card">
     <h3><span class="pin"></span> 등록/환불 추이 분석 — 전년 동기 비교</h3>
     <div class="desc">일자별누적(원장님) 자료를 연도별로 올리면, 등록·환불·등록인원 추이를 겹쳐 비교합니다. 파일 제목의 연도([25년…]/[26년…])를 자동 인식합니다.</div>
-    <div class="row">
+    <div class="row" id="anUploadRow">
       <label class="drop" id="dropRep" style="flex:1">
         <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
         <div><b>일자별누적 파일 올리기</b><br><span class="note" id="repNames">CSV 또는 엑셀 · 여러 개 한 번에 가능</span></div>
@@ -704,17 +714,32 @@ async function setGateHash(h){
 }
 document.getElementById('gateBtn').onclick = enterGate;
 document.getElementById('gatePw').addEventListener('keydown',e=>{ if(e.key==='Enter') enterGate(); });
-document.getElementById('setupLink').onclick = ()=>{ openApp(); switchTab('set'); };
+document.getElementById('setupLink').onclick = ()=>{ setRole('staff'); openApp(); switchTab('set'); };
+document.getElementById('roleViewer').onclick = ()=>{ setRole('viewer'); sessionStorage.setItem(LK('in'),'1'); openApp(); switchTab('analysis'); };
+document.getElementById('roleStaff').onclick = ()=>{ document.getElementById('gateRole').style.display='none'; document.getElementById('gatePwStep').style.display='block'; document.getElementById('gatePw').focus(); };
+document.getElementById('roleBack').onclick = ()=>{ document.getElementById('gatePwStep').style.display='none'; document.getElementById('gateRole').style.display='block'; document.getElementById('gateErr').textContent=''; };
+
+function setRole(r){ sessionStorage.setItem(LK('role'), r); applyRole(r); }
+function currentRole(){ return sessionStorage.getItem(LK('role'))||'staff'; }
+function applyRole(role){
+  const viewer = role==='viewer';
+  const viewerTabs = ['dash','analysis','hist'];
+  document.querySelectorAll('nav button').forEach(b=>{
+    b.style.display = (viewer && !viewerTabs.includes(b.dataset.tab)) ? 'none' : '';
+  });
+  const fab=document.getElementById('settingsFab'); if(fab) fab.style.display = viewer ? 'none' : '';
+  const up=document.getElementById('anUploadRow'); if(up) up.style.display = viewer ? 'none' : '';
+}
 
 async function enterGate(){
   const pw=document.getElementById('gatePw').value;
   const err=document.getElementById('gateErr'); err.textContent='';
   const stored=await getGateHash();
   if(!stored){ err.textContent='비번이 아직 설정되지 않았어요. 아래 초기 설정에서 먼저 지정하세요.'; return; }
-  if(await sha256(pw)===stored){ sessionStorage.setItem(LK('in'),'1'); openApp(); }
-  else err.textContent='비밀번호가 올라요. 다시 확인해 주세요.';
+  if(await sha256(pw)===stored){ setRole('staff'); sessionStorage.setItem(LK('in'),'1'); openApp(); }
+  else err.textContent='비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
 }
-function openApp(){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; }
+function openApp(){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; applyRole(currentRole()); }
 
 /* ===================================================================
  * 2) 탭
@@ -722,6 +747,7 @@ function openApp(){ document.getElementById('gate').style.display='none'; docume
 function switchTab(name){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
+  if(name==='analysis'){ (async()=>{ if(!Object.keys(AN.series).length) await loadAnalysisAll(); drawAnalysis(); })(); }
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 document.getElementById('settingsFab').onclick=()=>switchTab('set');
@@ -779,11 +805,37 @@ async function loadReportFile(file){
   ['anMetric','anAxis','anRange'].forEach(id=>document.getElementById(id).onchange=drawAnalysis);
   async function handleRepFiles(files){
     const names=[];
-    for(const f of files){ const yr=await loadReportFile(f); if(yr) names.push(yr); }
-    document.getElementById('repNames').textContent=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'}`;
+    for(const f of files){ const yr=await loadReportFile(f); if(yr){ names.push(yr); await saveAnalysisYear(yr, AN.series[yr]); } }
+    document.getElementById('repNames').textContent=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
     drawAnalysis();
   }
 })();
+// 분석 시리즈 Firebase 저장/로드 (뷰어도 파일 없이 보게)
+async function saveAnalysisYear(year, data){
+  if(!fbReady) return;
+  try{ await setDoc(doc(db,COL('analysis'),String(year)),{year:String(year),data,savedAt:Date.now()}); }catch(e){ console.error(e); }
+}
+async function loadAnalysisAll(){
+  if(!fbReady) return;
+  try{ const snap=await getDocs(collection(db,COL('analysis')));
+    snap.forEach(d=>{ const v=d.data(); if(v&&Array.isArray(v.data)){ v.data.forEach((o,i)=>o.idx=i); let cr=0,cf=0; v.data.forEach(o=>{cr+=o.금일등록||0;cf+=o.금일환불||0;o.cumReg=cr;o.cumRef=cf;}); AN.series[v.year]=v.data; } });
+  }catch(e){ console.error(e); }
+}
+// 올해 원장님 보고 한 점 자동 축적 (현황 저장 시 호출)
+async function accumulateAnalysisPoint(R){
+  if(!fbReady||!R||!R._reportRow) return;
+  const yr=String(new Date(R.base+'T00:00:00').getFullYear());
+  const [mo,dy]=[+R.base.slice(5,7),+R.base.slice(8,10)];
+  const pt={mo,dy,금일등록:R.reg||0,금일환불:-(R.ref||0),등록인원:R._regTotal!=null?R._regTotal:0};
+  // 기존 로드 후 같은 날짜 갱신/추가
+  let data=[];
+  try{ const s=await getDoc(doc(db,COL('analysis'),yr)); if(s.exists()&&Array.isArray(s.data().data)) data=s.data().data; }catch(e){}
+  const i=data.findIndex(o=>o.mo===mo&&o.dy===dy);
+  if(i>=0) data[i]=pt; else data.push(pt);
+  data.sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
+  await saveAnalysisYear(yr, data);
+  AN.series[yr]=data;
+}
 function drawAnalysis(){
   const box=document.getElementById('anChart'); if(!box) return;
   const years=Object.keys(AN.series).sort();
@@ -1386,6 +1438,8 @@ async function saveDaily(){
     await setDoc(doc(db,COL('daily'),dayKey(R.base,R.season)),payload);
     // 그날 raw 6블록도 누적 로그에 저장(지난 등록 보기 자동 누적)
     if(R.season!=='반수'){ await saveRawlogDay(R.base, rawRows()); }
+    // 분석용 원장님 보고 한 점 자동 축적
+    if(R.season!=='반수'){ await accumulateAnalysisPoint(R); }
     toast('✅ Firebase 저장 완료(공유)');
   }catch(e){
     console.error(e);
