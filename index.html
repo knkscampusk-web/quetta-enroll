@@ -335,7 +335,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 
     <div class="card" id="reportCard">
       <h3 style="justify-content:space-between">
-        <span><span class="pin"></span> 원장님 보고 (일자별누적)</span>
+        <span><span class="pin"></span> 오늘 신규·퇴소 요약</span>
         <button class="btn" id="reportCopyBtn">한 줄 복사</button>
       </h3>
       <div class="desc">일자별누적(원장님) 시트에 붙여넣는 한 줄입니다. 등록인원 = 전일등록 + 금일등록 + 금일환불.</div>
@@ -826,7 +826,7 @@ async function accumulateAnalysisPoint(R){
   if(!fbReady||!R||!R._reportRow) return;
   const yr=String(new Date(R.base+'T00:00:00').getFullYear());
   const [mo,dy]=[+R.base.slice(5,7),+R.base.slice(8,10)];
-  const pt={mo,dy,금일등록:R.reg||0,금일환불:-(R.ref||0),등록인원:R._regTotal!=null?R._regTotal:0};
+  const pt={mo,dy,금일등록:R.newc||0,금일환불:-(R.ref||0),등록인원:R._regTotal!=null?R._regTotal:0};
   // 기존 로드 후 같은 날짜 갱신/추가
   let data=[];
   try{ const s=await getDoc(doc(db,COL('analysis'),yr)); if(s.exists()&&Array.isArray(s.data().data)) data=s.data().data; }catch(e){}
@@ -1026,10 +1026,14 @@ function aggregateRoster(){
   const pb=ban=>{ const k=banList.includes(ban)?ban:'미배정'; if(!perBan[k]) perBan[k]=zero(); return perBan[k]; };
   const isReal=ban=>banList.includes(ban);
 
+  const monthCols=[]; for(let N=2;N<=11;N++){ const c=R.monthCol(N); if(c>=0) monthCols.push(c); }
+  const hasAnyReg=st=>monthCols.some(c=>mdNum(st._row[c])!=null);
+
   for(const st of R.students){
-    if(!st.sid) continue;                       // 수험번호 없으면 잡동사니 행 → 제외
+    if(!/^\d{4,}$/.test(String(st.sid))) continue;   // 숫자 수험번호만(헤더·안내문 등 잡동사니 제외)
     const real=isReal(st.ban), unassigned=!String(st.ban).trim();
-    if(!real && !unassigned) continue;          // A~S도 빈칸도 아닌 반(잡동사니) → 제외
+    if(!real && !unassigned) continue;               // A~S도 빈칸도 아닌 반 → 제외
+    if(unassigned && !hasAnyReg(st)) continue;        // 미배정인데 등록일도 없음 = 아직 미등록 → 제외
     const b=pb(real?st.ban:'미배정'); const sex=st.sex;
     const curr=mdNum(st._row[currCol]);        // 당월 재등록일
     const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
@@ -1214,7 +1218,7 @@ async function renderDash(){
     `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`;
   const _live0 = !R._historical && !R._cumulative && !R._roster;
   document.getElementById('heroMini').innerHTML=
-    `<div class="hp">편성계<b>${T.편성계}</b></div>`+
+    `<div class="hp">총인원<b>${T.편성계}</b></div>`+
     `<div class="hp">재등록<b>${T.재등록}</b></div>`+
     `<div class="hp">등록계<b>${_live0?'…':T.등록계}</b></div>`+
     `<div class="hp">미납<b>${_live0?'…':(T.미납<0?0:T.미납)}</b></div>`;
@@ -1226,7 +1230,7 @@ async function renderDash(){
     ${tile('',T.미납<0?0:T.미납,'미납(미등록)')}`;
 
   // ── 원장님 보고 (일자별누적) ──
-  const 금일등록=T.재등록, 금일환불=T.퇴소;
+  const 금일등록=T.신규, 금일환불=T.퇴소;   // 원장님 보고: 순증 기준 = 신규(편입)
   let 전일등록;
   if(R._reportPrev!=null) 전일등록=R._reportPrev;            // 과거(지난보기): 누적 계산값
   else if(R._prevRegTotal!=null) 전일등록=R._prevRegTotal;    // 라이브: 전일 저장본
@@ -1298,7 +1302,7 @@ async function renderDash(){
         // 히어로 미니도 갱신
         const hm=document.getElementById('heroMini');
         if(hm) hm.innerHTML=
-          `<div class="hp">편성계<b>${T.편성계}</b></div>`+
+          `<div class="hp">총인원<b>${T.편성계}</b></div>`+
           `<div class="hp">재등록<b>${T.재등록}</b></div>`+
           `<div class="hp">등록계<b>${u.재등록누적}</b></div>`+
           `<div class="hp">미납<b>${u.미납}</b></div>`;
@@ -1983,7 +1987,7 @@ function buildCumulativeResult(date){
   let repPrev=0;
   for(const d of HIST.dates.filter(x=>x<date)){
     const r=buildResultFromRaw(d, HIST.byDate[d].rows, null);
-    for(const ban in r.perBan){ repPrev += (r.perBan[ban].재등록||0) - (r.perBan[ban].퇴소||0); }
+    for(const ban in r.perBan){ repPrev += (r.perBan[ban].신규||0) - (r.perBan[ban].퇴소||0); }
   }
   day._reportPrev=repPrev;
   return day;
