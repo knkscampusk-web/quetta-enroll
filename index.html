@@ -1027,8 +1027,10 @@ function aggregateRoster(){
   const isReal=ban=>banList.includes(ban);
 
   for(const st of R.students){
-    if(!isReal(st.ban)) continue;              // 실제 반만(잡동사니 행 제외)
-    const b=pb(st.ban); const sex=st.sex;
+    if(!st.sid) continue;                       // 수험번호 없으면 잡동사니 행 → 제외
+    const real=isReal(st.ban), unassigned=!String(st.ban).trim();
+    if(!real && !unassigned) continue;          // A~S도 빈칸도 아닌 반(잡동사니) → 제외
+    const b=pb(real?st.ban:'미배정'); const sex=st.sex;
     const curr=mdNum(st._row[currCol]);        // 당월 재등록일
     const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
     const out=st.out;                          // 퇴소일
@@ -1061,14 +1063,16 @@ function aggregateRoster(){
   // 장학 라벨별(당월 재등록 학생의 장학대상 코드)
   const perJang={}; for(const L of JANG_LIST) perJang[L]={등록:0,환불:0,등록남:0,등록여:0};
   const unmapped=new Set();
-  for(const st of R.students){ if(!isReal(st.ban)||!st.jang) continue;
+  for(const st of R.students){ if(!st.sid||!st.jang) continue;
+    const real=isReal(st.ban), unassigned=!String(st.ban).trim();
+    if(!real && !unassigned) continue;
     const curr=mdNum(st._row[currCol]); if(curr!==Dmd) continue;
     const L=jangCodeToLabel(st.jang); if(!L){ unmapped.add(st.jang); continue; }
     perJang[L].등록++; if(st.sex==='남') perJang[L].등록남++; else if(st.sex==='여') perJang[L].등록여++;
   }
   if(unmapped.size) warnings.push(`미매핑 장학코드: ${[...unmapped].join(', ')} → 설정 > 장학 코드 매핑`);
 
-  const totalRoster=R.students.filter(s=>isReal(s.ban)).length;
+  const totalRoster=R.students.filter(s=>s.sid&&(isReal(s.ban)||!String(s.ban).trim())).length;
   const reg=Object.values(perBan).reduce((a,b)=>a+(b.재등록||0),0);
   const ref=Object.values(perBan).reduce((a,b)=>a+(b.퇴소||0),0);
   const newc=Object.values(perBan).reduce((a,b)=>a+(b.신규||0),0);
@@ -1695,7 +1699,7 @@ document.getElementById('rosterBtn').onclick=async()=>{
     const [ro,rc]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null)]);
     STATE.rosterData=parseRoster(ro.rows);
     if(rc) STATE.receipt=parseReceiptRows(rc.rows);
-    const n=STATE.rosterData.students.filter(s=>(CFG.banList||DEFAULT_BANS).includes(s.ban)).length;
+    const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
     aggregateRoster();
     switchTab('dash');
