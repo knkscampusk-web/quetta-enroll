@@ -1054,9 +1054,22 @@ function aggregateRoster(){
       if(prev==null){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
       if(st.jang){ const L=jangCodeToLabel(st.jang); if(L) b.장학등록++; }
     }
-    // 금일 퇴소
-    if(out===Dmd){ b.퇴소++; b.재등록환불++; if(sex==='남'){b.퇴소남++;b.재등록환불남++;} else if(sex==='여'){b.퇴소여++;b.재등록환불여++;} }
-    // 전일값(표시용): 절대 − 금일delta
+  }
+
+  // 금일 퇴소 = 환불시트에서 퇴소일==기준일 (학생명단에선 삭제되므로 여기서 집계)
+  if(STATE.refundData && Array.isArray(STATE.refundData.students)){
+    for(const st of STATE.refundData.students){
+      if(!/^\d{4,}$/.test(String(st.sid))) continue;
+      if(st.out===Dmd){
+        const b=pb(isReal(st.ban)?st.ban:'미배정');
+        b.퇴소++; b.재등록환불++;
+        if(st.sex==='남'){b.퇴소남++;b.재등록환불남++;} else if(st.sex==='여'){b.퇴소여++;b.재등록환불여++;}
+      }
+    }
+  }
+
+  // 전일값(표시용): 절대 − 금일delta
+  for(const ban in perBan){ const b=perBan[ban];
     b.전일편성 = b.편성계 - (b.신규||0) + (b.퇴소||0);
     b.전일등록 = b.등록계 - (b.재등록||0) + (b.재등록환불||0);
   }
@@ -1700,9 +1713,10 @@ document.getElementById('rosterBtn').onclick=async()=>{
   if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
   try{
-    const [ro,rc]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null)]);
+    const [ro,rc,rf]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null)]);
     STATE.rosterData=parseRoster(ro.rows);
     if(rc) STATE.receipt=parseReceiptRows(rc.rows);
+    if(rf) STATE.refundData=parseRoster(rf.rows);
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
     aggregateRoster();
