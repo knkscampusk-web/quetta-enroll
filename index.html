@@ -1021,8 +1021,9 @@ function aggregateRoster(){
 
   const zero=()=>({편성:0,신규:0,신규남:0,신규여:0,퇴소:0,퇴소남:0,퇴소여:0,
     재등록:0,재등록남:0,재등록여:0,재등록환불:0,재등록환불남:0,재등록환불여:0,
-    편성계:0,등록계:0,미납:0,전일편성:0,전일등록:0,편입:0,반수:0,장학등록:0,장학환불:0});
+    편성계:0,등록계:0,미납:0,전일편성:0,전일등록:0,편입:0,반수:0,장학등록:0,장학환불:0,배정:0});
   const perBan={}; for(const b of [...banList,'미배정']) perBan[b]=zero();
+  const assignMap={};   // 수험번호 → 현재 반(미배정 포함)
   const pb=ban=>{ const k=banList.includes(ban)?ban:'미배정'; if(!perBan[k]) perBan[k]=zero(); return perBan[k]; };
   const isReal=ban=>banList.includes(ban);
 
@@ -1035,6 +1036,7 @@ function aggregateRoster(){
     if(!real && !unassigned) continue;               // A~S도 빈칸도 아닌 반 → 제외
     if(unassigned && !hasAnyReg(st)) continue;        // 미배정인데 등록일도 없음 = 아직 미등록 → 제외
     const b=pb(real?st.ban:'미배정'); const sex=st.sex;
+    assignMap[st.sid]=real?st.ban:'미배정';
     const curr=mdNum(st._row[currCol]);        // 당월 재등록일
     const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
     const out=st.out;                          // 퇴소일
@@ -1094,7 +1096,7 @@ function aggregateRoster(){
   const ref=Object.values(perBan).reduce((a,b)=>a+(b.퇴소||0),0);
   const newc=Object.values(perBan).reduce((a,b)=>a+(b.신규||0),0);
   STATE.result={ base, writer, season, banList, jhList, perBan, perJh, perJang,
-    totalRoster, reg, ref, newc, warnings, _roster:true };
+    totalRoster, reg, ref, newc, warnings, _roster:true, _assign:assignMap };
   renderDash(); renderRaw();
 }
 
@@ -1188,9 +1190,20 @@ async function renderDash(){
     ? `<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거 데이터 (raw 로그)</span> 작성자 ${R.writer||'-'}`
     : `작성자 ${R.writer||'-'} · 모든 반/전형 0 포함 출력은 raw 탭에서`;
 
-  let pBan;
+  let pBan, prevAssign=null;
   if(R._prevBan!==undefined){ pBan = R._prevBan; }
-  else { const prev = await loadDaily(prevDateKey(R.base, R.season)); pBan = prev&&prev.perBan ? prev.perBan : null; if(prev&&prev.regTotal!=null) R._prevRegTotal=prev.regTotal; }
+  else { const prev = await loadDaily(prevDateKey(R.base, R.season)); pBan = prev&&prev.perBan ? prev.perBan : null; if(prev&&prev.regTotal!=null) R._prevRegTotal=prev.regTotal; if(prev&&prev.assignMap) prevAssign=prev.assignMap; }
+
+  // 반배정 이동: 어제 미배정 → 오늘 실제 반 (배정 +1 / 미배정 -1)
+  if(R._roster && R._assign && prevAssign){
+    for(const sid in R._assign){
+      const now=R._assign[sid], was=prevAssign[sid];
+      if(was==='미배정' && now && now!=='미배정' && R.perBan[now]){
+        R.perBan[now].배정=(R.perBan[now].배정||0)+1;
+        if(R.perBan['미배정']) R.perBan['미배정'].배정=(R.perBan['미배정'].배정||0)-1;
+      }
+    }
+  }
 
   const S=(f)=>Object.values(R.perBan).reduce((a,b)=>a+(b[f]||0),0);
 
@@ -1265,6 +1278,7 @@ async function renderDash(){
     전일등록==null ? '전일등록이 없어 등록인원=금일등록−금일환불로 계산됐어요. 매일 현황 저장하면 다음날 전일등록이 이어집니다.' : '';
 
   // ① 편성현황 표 (신규−퇴소, 성별)
+  const mv=v=>v>0?'+'+v:(v<0?''+v:'');
   const r1=[];
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
@@ -1272,16 +1286,18 @@ async function renderDash(){
       <td class="mono">${b.전일편성}</td>
       <td class="mono">${b.신규||''}</td>
       <td class="mono">${b.퇴소?'-'+b.퇴소:''}</td>
+      <td class="mono ${b.배정>0?'':(b.배정<0?'neg':'')}" style="${b.배정>0?'color:var(--teal-ink);font-weight:700':''}">${mv(b.배정||0)}</td>
       <td class="mono"><b>${b.편성계}</b></td>
       <td class="mono">${b.신규남||''}</td><td class="mono">${b.퇴소남?'-'+b.퇴소남:''}</td>
       <td class="mono">${b.신규여||''}</td><td class="mono">${b.퇴소여?'-'+b.퇴소여:''}</td></tr>`);
   }
+  T.배정=Object.values(R.perBan).reduce((a,b)=>a+(b.배정||0),0);
   r1.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${T.전일편성}</td><td class="mono">${T.신규}</td><td class="mono">${T.퇴소?'-'+T.퇴소:'0'}</td><td class="mono"><b>${T.편성계}</b></td>
+    <td class="mono">${T.전일편성}</td><td class="mono">${T.신규}</td><td class="mono">${T.퇴소?'-'+T.퇴소:'0'}</td><td class="mono">${T.배정?mv(T.배정):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
     <td class="mono">${T.신규남}</td><td class="mono">${T.퇴소남?'-'+T.퇴소남:'0'}</td>
     <td class="mono">${T.신규여}</td><td class="mono">${T.퇴소여?'-'+T.퇴소여:'0'}</td></tr>`);
   document.getElementById('dashTable').innerHTML=
-    `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
+    `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>반배정</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
 
   // ② 재등록 표 (등록−미등록)
   const isLive = !R._historical && !R._cumulative && !R._roster;
@@ -1451,6 +1467,7 @@ async function saveDaily(){
   const payload={ base:R.base, season:R.season, writer:R.writer,
     totalRoster:R.totalRoster, reg:R.reg, ref:R.ref, newc:R.newc,
     regTotal:(R._regTotal!=null?R._regTotal:null),
+    assignMap:(R._assign||null),
     perBan:R.perBan, perJh:R.perJh, savedAt:Date.now() };
   // 로컬은 항상 보조 저장
   localStorage.setItem(LK('daily_')+dayKey(R.base,R.season),JSON.stringify(payload));
