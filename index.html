@@ -592,11 +592,11 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E9OoDXv7LP8rxQgz155uRklPEWBEs_uMfF3aKbpCaddfiuUA/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
-// 개강후 블록 기입: 반별 오늘값 + 서버가 이월 처리
-async function writeEnroll(rows){
+// 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
+async function writeEnroll(rows, writer){
   const res=await fetch(GS_URL, { method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows }) });
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer }) });
   const j=await res.json();
   if(j.error) throw new Error(j.error);
   return j;
@@ -1860,13 +1860,17 @@ document.getElementById('enrollBtn').onclick=async()=>{
 document.getElementById('enCancelBtn').onclick=()=>{ document.getElementById('enPanel').style.display='none'; EN=null; };
 document.getElementById('enApplyBtn').onclick=async()=>{
   if(!EN||!EN.payload.length) return;
-  if(!confirm(`2026정규 개강후 블록에 오늘 내역을 기입합니다.\n전일등록은 어제 소계 이월, 신규·퇴소·재등록은 오늘값으로 덮어씁니다.\n소계·등록계 수식은 안 건드려요. 진행할까요?`)) return;
+  if(!confirm(`2026정규 개강후 블록에 오늘 내역을 기입하고,\n작성자(S1)와 raw 누적(A52:U108→2026raw정규)까지 진행합니다.\n소계·등록계 수식은 안 건드려요. 진행할까요?`)) return;
   const btn=document.getElementById('enApplyBtn'); btn.disabled=true; btn.textContent='기입 중…';
   const note=document.getElementById('enApplyNote');
   try{
-    const r=await writeEnroll(EN.payload);
-    note.innerHTML=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
-    toast('✅ 개강후 블록 기입 완료'); btn.textContent='완료됨';
+    const writer=(STATE.result&&STATE.result.writer)||document.getElementById('writer').value||'';
+    const r=await writeEnroll(EN.payload, writer);
+    let msg=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
+    if(r.raw&&r.raw.appended) msg+=` · raw 누적 ${r.raw.appended}행(${r.raw.atRow}행부터)`;
+    else if(r.raw&&r.raw.error) msg+=` · ⚠ raw: ${r.raw.error}`;
+    note.innerHTML=msg;
+    toast('✅ 개강후 기입 + raw 누적 완료'); btn.textContent='완료됨';
   }catch(e){ console.error(e);
     note.innerHTML=`<span style="color:var(--red)">⚠ 기입 실패: ${e.message||e}</span>`;
     btn.disabled=false; btn.textContent='다시 시도';
