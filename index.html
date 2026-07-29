@@ -376,11 +376,18 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <div class="desc">경영지원 등록관리 앱(Supabase)의 같은 날짜 합계와 자동 비교합니다. 읽기 전용이라 그쪽 데이터는 바뀌지 않아요.</div>
       <div id="verifyBox"><div class="note">‘불러와 대조’를 누르면 경영지원 앱 값을 읽어와 비교합니다.</div></div>
     </div>
+    <div class="card" id="receiptCard" style="display:none">
+      <h3><span class="pin"></span> 접수 현황 (개강후 간헐 접수)</h3>
+      <div class="desc">접수대장에서 오늘 날짜 접수를 전형별로 집계했어요. <b>유시험 합격만 수기 입력</b> 후 대시보드의 <b>개강후 시트 기입</b>을 누르면 접수 블록까지 함께 반영됩니다.</div>
+      <div class="tablewrap"><table id="receiptTable"></table></div>
+      <div class="row" style="margin-top:10px;align-items:center;gap:10px">
+        <label class="note" style="font-weight:700;color:var(--ink)">유시험 합격(수기)</label>
+        <input id="usiHab" type="number" min="0" placeholder="0" style="width:110px">
+        <span class="note">유시험 접수=합격이 아니므로 합격 인원을 직접 입력하세요. (나머지 전형은 접수=합격 자동)</span>
+      </div>
+    </div>
   </div>
 </section>
-
-<!-- ===== raw 출력 ===== -->
-<!-- ===== 지난 등록 보기 ===== -->
 <section class="tab" id="tab-hist">
   <div class="card" id="histList">
     <h3><span class="pin"></span> 지난 등록 보기</h3>
@@ -577,10 +584,10 @@ const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
 // 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
-async function writeEnroll(rows, writer){
+async function writeEnroll(rows, writer, receipt){
   const res=await fetch(GS_URL, { method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer }) });
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer, receipt }) });
   const j=await res.json();
   if(j.error) throw new Error(j.error);
   return j;
@@ -965,6 +972,8 @@ let STATE={ daily:null, master:null, receipt:null, result:null };
 
 // 고정 목록 (설정에서 덮어쓰기 가능)
 const DEFAULT_BANS=['A','X','I','O','M','K','N','D','S'];
+// 접수현황 블록 전형 순서 (2026정규 시트 4~13행)
+const JH_LIST=['장학퀀텀_0T','장학퀀텀_4T','장학퀀텀_6T','장학퀀텀_10T','장학퀀텀_14T','우선선발 전형','선착순 전형','수학만 전형','특별 전형','유시험 전형'];
 const DEFAULT_JH=['장학퀀텀_0T','장학퀀텀_4T','장학퀀텀_6T','장학퀀텀_10T','장학퀀텀_14T','우선선발 전형','선착순 전형','수학만 전형','특별 전형','유시험 전형'];
 const JANG_LIST=['교습100+기100+교재100+콘100','교습100+독100+교재100','교습100+교재100','교습80+교재50','교습50+교재50','교습30','교습20'];
 const GYE_FIXED='미적/확통';
@@ -988,6 +997,19 @@ function mdNum(v){
 }
 // 앱 날짜 '2026-07-06' → 706
 function dateToMd(d){ const m=String(d||'').match(/^\d{4}-(\d{2})-(\d{2})$/); return m? (+m[1])*100+(+m[2]) : null; }
+// 접수대장(2D): A(0)=접수일'M/D(요일)', J(9)=전형 → 오늘(baseDate) 전형별 접수 수
+function countReceiptToday(rows, baseDate){
+  const md=dateToMd(baseDate); if(md==null) return {};
+  const out={};
+  for(const r of (rows||[]).slice(1)){
+    const a=String(r[0]||'').trim(); const m=a.match(/(\d{1,2})\/(\d{1,2})/);
+    if(!m) continue;
+    if((+m[1])*100+(+m[2])!==md) continue;
+    const jh=String(r[9]||'').trim(); if(!jh) continue;
+    out[jh]=(out[jh]||0)+1;
+  }
+  return out; // {전형: 오늘 접수 수}
+}
 // 학생명단 rows(2D배열) 파싱: 헤더 인덱스 + 학생 객체
 function parseRoster(rows){
   const hdr=(rows[0]||[]).map(h=>String(h||'').trim());
@@ -1279,6 +1301,20 @@ async function renderDash(){
   R._reportRow=[dLabel, 전일등록==null?'':전일등록, 금일등록, 금일환불?(-금일환불):'', 등록인원];
   document.getElementById('reportNote').textContent =
     전일등록==null ? '전일등록이 없어 등록인원=금일등록−금일환불로 계산됐어요. 매일 현황 저장하면 다음날 전일등록이 이어집니다.' : '';
+
+  // 접수 현황 카드 (접수대장 오늘 접수)
+  const rcCard=document.getElementById('receiptCard');
+  if(rcCard){
+    const rt=STATE.receiptToday;
+    if(R._roster && rt){
+      const tot=Object.values(rt).reduce((a,b)=>a+b,0);
+      document.getElementById('receiptTable').innerHTML=
+        `<thead><tr><th>전형</th><th>오늘 접수</th></tr></thead><tbody>`+
+        JH_LIST.map(jh=>`<tr><td>${jh}</td><td class="mono">${rt[jh]||''}</td></tr>`).join('')+
+        `<tr class="tot"><td>합계</td><td class="mono"><b>${tot}</b></td></tr></tbody>`;
+      rcCard.style.display='';
+    } else rcCard.style.display='none';
+  }
 
   // ① 편성현황 표 (신규−퇴소, 성별)
   const mv=v=>v>0?'+'+v:(v<0?''+v:'');
@@ -1735,10 +1771,11 @@ document.getElementById('rosterBtn').onclick=async()=>{
   if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
   try{
-    const [ro,rc,rf]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null)]);
+    const [ro,rc,rf,rl]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null), fetchSheet('receiptlog').catch(()=>null)]);
     STATE.rosterData=parseRoster(ro.rows); setLed('roster');
     if(rc){ STATE.receipt=parseReceiptRows(rc.rows); setLed('master'); }
     if(rf){ STATE.refundData=parseRoster(rf.rows); setLed('refund'); }
+    if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
     aggregateRoster();
@@ -1852,7 +1889,11 @@ document.getElementById('enApplyBtn').onclick=async()=>{
   const note=document.getElementById('enApplyNote');
   try{
     const writer=(STATE.result&&STATE.result.writer)||document.getElementById('writer').value||'';
-    const r=await writeEnroll(EN.payload, writer);
+    // 접수 payload: 전형별 오늘 접수 + 유시험 합격(수기)
+    const rt=STATE.receiptToday||{};
+    const usi=parseInt(document.getElementById('usiHab').value);
+    const receipt=JH_LIST.map(jh=>({ jh, jubsu:rt[jh]||0, hab:(jh==='유시험 전형'&&!isNaN(usi))?usi:'' }));
+    const r=await writeEnroll(EN.payload, writer, receipt);
     let msg=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
     if(r.raw&&r.raw.appended) msg+=` · raw 누적 ${r.raw.appended}행(${r.raw.atRow}행부터)`;
     else if(r.raw&&r.raw.error) msg+=` · ⚠ raw: ${r.raw.error}`;
