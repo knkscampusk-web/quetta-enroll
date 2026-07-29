@@ -243,7 +243,6 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 <nav>
   <button data-tab="input" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>일일명단 입력</button>
   <button data-tab="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>대시보드</button>
-  <button data-tab="raw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>raw 출력</button>
   <button data-tab="hist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>지난 등록 보기</button>
   <button data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>분석</button>
 </nav>
@@ -381,21 +380,6 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 </section>
 
 <!-- ===== raw 출력 ===== -->
-<section class="tab" id="tab-raw">
-  <div class="card">
-    <h3 style="justify-content:space-between">
-      <span><span class="pin"></span> 등록파일 <code id="rawSheet">2026raw정규</code> 붙여넣기 행</span>
-      <span>
-        <button class="btn pri" id="copyBtn">복사</button>
-        <button class="btn" id="xlsxBtn">엑셀 다운로드</button>
-      </span>
-    </h3>
-    <div class="desc">아래 행을 그대로 복사해 등록파일 raw 시트 맨 아래에 붙여넣으면, 일자별확인·2026정규·일일보고가 자동 계산됩니다.</div>
-    <div class="tablewrap"><table id="rawTable"></table></div>
-    <div class="note">접수·합격·편성인원은 등록 자료에 없는 값이라 비워둡니다(접수 측 보고는 별도). 필요 시 현황표(③)에서 채워 넣을 수 있어요.</div>
-  </div>
-</section>
-
 <!-- ===== 지난 등록 보기 ===== -->
 <section class="tab" id="tab-hist">
   <div class="card" id="histList">
@@ -1457,18 +1441,21 @@ function rawRows(){
   return out;
 }
 function renderRaw(){
-  document.getElementById('rawSheet').textContent = STATE.result?.season==='반수' ? '2026raw반수' : '2026raw정규';
+  const rs=document.getElementById('rawSheet'); if(rs) rs.textContent = STATE.result?.season==='반수' ? '2026raw반수' : '2026raw정규';
+  const tbl=document.getElementById('rawTable'); if(!tbl) return;   // raw 탭 제거됨 → 화면 갱신 생략(내부 로직은 유지)
   const rows=rawRows();
   const h=`<thead><tr>${RAW_COLS.map(c=>`<th>${c}</th>`).join('')}</tr></thead>`;
   const b=`<tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===0||i===1||i===2||i===3||i===15?' style="text-align:left"':''}>${c===''||c==null?'':c}</td>`).join('')}</tr>`).join('')}</tbody>`;
-  document.getElementById('rawTable').innerHTML=h+b;
+  tbl.innerHTML=h+b;
 }
-document.getElementById('copyBtn').onclick=()=>{
+const _copyBtn=document.getElementById('copyBtn');
+if(_copyBtn) _copyBtn.onclick=()=>{
   const rows=rawRows(); if(!rows.length){toast('출력할 행이 없어요');return;}
   const tsv=rows.map(r=>r.map(c=>c===null?'':c).join('\t')).join('\n');
   navigator.clipboard.writeText(tsv).then(()=>toast('복사됨 — raw 시트에 붙여넣기'));
 };
-document.getElementById('xlsxBtn').onclick=()=>{
+const _xlsxBtn=document.getElementById('xlsxBtn');
+if(_xlsxBtn) _xlsxBtn.onclick=()=>{
   const rows=rawRows(); if(!rows.length){toast('출력할 행이 없어요');return;}
   const ws=XLSX.utils.aoa_to_sheet([RAW_COLS,...rows]);
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'raw');
