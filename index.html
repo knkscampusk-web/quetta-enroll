@@ -281,6 +281,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <button class="btn pri" id="rosterBtn">학생명단으로 등록잡기</button>
       <button class="btn" id="writebackBtn">학생명단에 재등록일 기입(미리보기)</button>
       <button class="btn" id="refundBtn">환불자 이동(미리보기)</button>
+      <button class="btn" id="enrollBtn">개강후 시트 기입(미리보기)</button>
       <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
       <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
       <span class="note" id="inputNote">권장: <b>학생명단으로 등록잡기</b> — 구글시트 학생명단(월별 재등록일)으로 편성·재등록·미납을 한 번에 계산합니다.</span>
@@ -582,6 +583,15 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E9OoDXv7LP8rxQgz155uRklPEWBEs_uMfF3aKbpCaddfiuUA/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
+// 개강후 블록 기입: 반별 오늘값 + 서버가 이월 처리
+async function writeEnroll(rows){
+  const res=await fetch(GS_URL, { method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows }) });
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  return j;
+}
 // 환불자 이동: 학생명단 행 → 환불 시트 이동 후 삭제 (퇴소일=기준일)
 async function moveRefunders(wy, wm, wd, sids){
   const res=await fetch(GS_URL, { method:'POST',
@@ -1799,9 +1809,71 @@ document.getElementById('writebackBtn').onclick=async()=>{
   }
 };
 document.getElementById('wbCancelBtn').onclick=()=>{ document.getElementById('wbPanel').style.display='none'; WB=null; };
+
+// ── 개강후 시트 기입 (미리보기 → 실행) ──
+let EN=null;
+document.getElementById('enrollBtn').onclick=async()=>{
+  const note=document.getElementById('gsNote');
+  const R=STATE.result;
+  if(!R||!R._roster||!R.perBan){ toast('먼저 "학생명단으로 등록잡기"를 실행하세요'); return; }
+  note.textContent='2026정규 시트 현재값(어제 마감) 읽는 중…';
+  try{
+    const rep=await fetchSheet('report');
+    // 개강후 데이터행(A='정규시즌') → 반: {J,N,R}
+    const carry={};
+    for(const row of rep.rows){ if(String(row[0]).trim()==='정규시즌'){ const ban=String(row[1]).trim();
+      carry[ban]={J:row[9],N:row[13],R:row[17]}; } }
+    const bans=[...R.banList,'미배정'];
+    const rows=[]; const payload=[];
+    for(const ban of bans){
+      const b=R.perBan[ban]; if(!b) continue;
+      const c=carry[ban]||{J:'',N:'',R:''};
+      const rec={ban, sinN:b.신규남||0, chulN:b.퇴소남||0, sinY:b.신규여||0, chulY:b.퇴소여||0, reReg:b.재등록||0, reRef:b.재등록환불||0};
+      payload.push(rec);
+      rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec});
+    }
+    EN={ payload };
+    const dash=v=>(v===0||v==null||v==='')?'':v;
+    const neg=v=>v?('-'+v):'';
+    document.getElementById('wbTable').innerHTML=
+      `<thead><tr><th rowspan="2">반</th><th colspan="3">편성 남 (G/H/I)</th><th colspan="3">편성 여 (K/L/M)</th><th colspan="3">재등록 (O/P/Q)</th></tr>`+
+      `<tr><th>전일↩</th><th>신규</th><th>퇴소</th><th>전일↩</th><th>신규</th><th>퇴소</th><th>전일↩</th><th>재등록</th><th>환불</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr><td>${r.ban}</td>`+
+        `<td class="mono" style="color:var(--muted)">${dash(r.cJ)}</td><td class="mono">${dash(r.sinN)}</td><td class="mono">${neg(r.chulN)}</td>`+
+        `<td class="mono" style="color:var(--muted)">${dash(r.cN)}</td><td class="mono">${dash(r.sinY)}</td><td class="mono">${neg(r.chulY)}</td>`+
+        `<td class="mono" style="color:var(--muted)">${dash(r.cR)}</td><td class="mono">${dash(r.reReg)}</td><td class="mono">${neg(r.reRef)}</td></tr>`).join('')+
+      `</tbody>`;
+    document.getElementById('wbSummary').innerHTML=`반 ${rows.length}개 · 회색=이월(어제 소계→전일등록)`;
+    const applyBtn=document.getElementById('wbApplyBtn');
+    applyBtn.disabled=false; applyBtn.dataset.mode='enroll';
+    applyBtn.textContent=`2026정규 개강후 블록에 기입 (${rows.length}개 반)`;
+    document.getElementById('wbApplyNote').innerHTML=`<span style="color:var(--muted)">전일등록(G/K/O)엔 어제 소계·등록계가 이월되고, 신규·퇴소·재등록은 오늘값으로 덮어써요. 소계·등록계(J/N/R)는 수식이라 안 건드려요.</span>`;
+    document.getElementById('wbPanel').style.display='block';
+    note.textContent='';
+    document.getElementById('wbPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }catch(e){ console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ 미리보기 실패: ${e.message||e}</span> — 웹앱에 report 소스가 배포됐는지 확인하세요.`;
+  }
+};
 document.getElementById('wbApplyBtn').onclick=async()=>{
   const btn=document.getElementById('wbApplyBtn');
   const note=document.getElementById('wbApplyNote');
+  // 개강후 기입 모드
+  if(btn.dataset.mode==='enroll'){
+    if(!EN||!EN.payload.length) return;
+    if(!confirm(`2026정규 개강후 블록에 오늘 내역을 기입합니다.\n전일등록은 어제 소계가 이월되고, 신규·퇴소·재등록은 오늘값으로 덮어씁니다.\n소계·등록계 수식은 건드리지 않아요. 진행할까요?`)) return;
+    btn.disabled=true; btn.textContent='기입 중…';
+    try{
+      const r=await writeEnroll(EN.payload);
+      note.innerHTML=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
+      toast(`✅ 개강후 블록 기입 완료`);
+      btn.textContent='완료됨';
+    }catch(e){ console.error(e);
+      note.innerHTML=`<span style="color:var(--red)">⚠ 기입 실패: ${e.message||e}</span>`;
+      btn.disabled=false; btn.textContent='다시 시도';
+    }
+    return;
+  }
   // 환불 모드
   if(btn.dataset.mode==='refund'){
     if(!RF||!RF.sids.length) return;
