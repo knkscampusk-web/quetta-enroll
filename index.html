@@ -379,6 +379,12 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       </div>
     </div>
 
+    <div class="card" id="jangCard" style="display:none">
+      <h3><span class="pin"></span> 장학생 현황 (오늘)</h3>
+      <div class="desc">오늘 장학 접수·등록·환불을 종류별로 집계했어요. 개강후 시트 기입 시 장학 블록에 함께 반영됩니다.</div>
+      <div class="tablewrap"><table id="jangTable"></table></div>
+    </div>
+
     <div class="card">
       <h3 style="justify-content:space-between">
         <span><span class="pin"></span> 경영지원 현황 대조</span>
@@ -1344,6 +1350,22 @@ async function renderDash(){
         `<tr class="tot"><td>합계</td><td class="mono"><b>${tot}</b></td></tr></tbody>`;
       rcCard.style.display='';
     } else rcCard.style.display='none';
+  }
+
+  // 장학생 현황 카드 (오늘 접수·등록·환불)
+  const jCard=document.getElementById('jangCard');
+  if(jCard){
+    const pj=R.perJang;
+    if(R._roster && pj){
+      let tj=0,td=0,th=0;
+      const body=JANG_LIST.map(L=>{ const g=pj[L]||{}; const jb=g.접수||0,dg=g.등록||0,hw=g.환불||0;
+        tj+=jb;td+=dg;th+=hw;
+        return `<tr><td>${L}</td><td class="mono">${jb||''}</td><td class="mono">${dg||''}</td><td class="mono">${hw?'-'+hw:''}</td></tr>`;}).join('');
+      document.getElementById('jangTable').innerHTML=
+        `<thead><tr><th>장학 종류</th><th>접수</th><th>등록</th><th>환불</th></tr></thead><tbody>${body}`+
+        `<tr class="tot"><td>소계</td><td class="mono"><b>${tj}</b></td><td class="mono"><b>${td}</b></td><td class="mono"><b>${th?'-'+th:'0'}</b></td></tr></tbody>`;
+      jCard.style.display='';
+    } else jCard.style.display='none';
   }
 
   // ① 편성현황 표 (신규−퇴소, 성별)
