@@ -585,10 +585,10 @@ const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
 // 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
-async function writeEnroll(rows, writer, receipt){
+async function writeEnroll(rows, writer, receipt, jang){
   const res=await fetch(GS_URL, { method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer, receipt }) });
+    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer, receipt, jang }) });
   const j=await res.json();
   if(j.error) throw new Error(j.error);
   return j;
@@ -1116,7 +1116,7 @@ function aggregateRoster(){
   const RC=STATE.receipt;
   const perJh={}; for(const jh of jhList){ const r=RC&&RC.byJh&&RC.byJh[jh]; perJh[jh]={접수:r?r.접수:'',합격:r?(jh==='유시험 전형'?'':r.접수):''}; }
   // 장학 라벨별(당월 재등록 학생의 장학대상 코드)
-  const perJang={}; for(const L of JANG_LIST) perJang[L]={등록:0,환불:0,등록남:0,등록여:0};
+  const perJang={}; for(const L of JANG_LIST) perJang[L]={등록:0,환불:0,접수:0,등록남:0,등록여:0};
   const unmapped=new Set();
   for(const st of R.students){ if(!st.sid||!st.jang) continue;
     const real=isReal(st.ban), unassigned=!String(st.ban).trim();
@@ -1124,6 +1124,25 @@ function aggregateRoster(){
     const curr=mdNum(st._row[currCol]); if(curr!==Dmd) continue;
     const L=jangCodeToLabel(st.jang); if(!L){ unmapped.add(st.jang); continue; }
     perJang[L].등록++; if(st.sex==='남') perJang[L].등록남++; else if(st.sex==='여') perJang[L].등록여++;
+  }
+  // 장학 환불: 오늘 환불시트로 옮긴 사람 중 장학
+  if(STATE.refundData && Array.isArray(STATE.refundData.students)){
+    for(const st of STATE.refundData.students){
+      if(!/^\d{4,}$/.test(String(st.sid))||!st.jang) continue;
+      if(st.out!==Dmd) continue;
+      const L=jangCodeToLabel(st.jang); if(L) perJang[L].환불++;
+    }
+  }
+  // 장학 접수: 접수대장 오늘(A==Dmd) F열(장학여부) → 라벨
+  if(STATE.receiptRows){
+    for(const row of STATE.receiptRows.slice(1)){
+      const a=String(row[0]||'').trim(); if(!a) continue;
+      let am=null; const m=a.match(/(\d{1,2})\/(\d{1,2})/);
+      am = m ? (+m[1])*100+(+m[2]) : mdNum(a);
+      if(am!==Dmd) continue;
+      const code=String(row[5]||'').trim(); if(!code) continue;   // F열 장학여부
+      const L=jangCodeToLabel(code); if(L) perJang[L].접수++;
+    }
   }
   if(unmapped.size) warnings.push(`미매핑 장학코드: ${[...unmapped].join(', ')} → 설정 > 장학 코드 매핑`);
 
@@ -1786,7 +1805,7 @@ document.getElementById('rosterBtn').onclick=async()=>{
     STATE.rosterData=parseRoster(ro.rows); setLed('roster');
     if(rc){ STATE.receipt=parseReceiptRows(rc.rows); setLed('master'); }
     if(rf){ STATE.refundData=parseRoster(rf.rows); setLed('refund'); }
-    if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); }
+    if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); STATE.receiptRows=rl.rows; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
     aggregateRoster();
@@ -1904,7 +1923,10 @@ document.getElementById('enApplyBtn').onclick=async()=>{
     const rt=STATE.receiptToday||{};
     const usi=parseInt(document.getElementById('usiHab').value);
     const receipt=JH_LIST.map(jh=>({ jh, jubsu:rt[jh]||0, hab:(jh==='유시험 전형'&&!isNaN(usi))?usi:'' }));
-    const r=await writeEnroll(EN.payload, writer, receipt);
+    // 장학 블록: 라벨별 접수/등록/환불
+    const pj=(STATE.result&&STATE.result.perJang)||{};
+    const jang=JANG_LIST.map(L=>({ label:L, jubsu:(pj[L]&&pj[L].접수)||0, deung:(pj[L]&&pj[L].등록)||0, hwan:(pj[L]&&pj[L].환불)||0 }));
+    const r=await writeEnroll(EN.payload, writer, receipt, jang);
     let msg=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
     if(r.raw&&r.raw.appended) msg+=` · raw 누적 ${r.raw.appended}행(${r.raw.atRow}행부터)`;
     else if(r.raw&&r.raw.error) msg+=` · ⚠ raw: ${r.raw.error}`;
