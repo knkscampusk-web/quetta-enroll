@@ -442,6 +442,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       </div>
     </div>
     <div id="anChart" style="margin-top:16px"></div>
+    <div id="anCompare" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px"></div>
     <div class="note" id="anLegend" style="margin-top:8px"></div>
   </div>
 </section>
@@ -775,6 +776,14 @@ document.getElementById('setBack').onclick=()=>switchTab('dash');
  * =================================================================== */
 const AN={ series:{} }; // {year: [{mo,dy,금일등록,금일환불,등록인원,idx}]}
 const AN_COLORS={2025:'#7E8CC6',2026:'#00B2BE',2024:'#E5943A',2027:'#C0577B'};
+// 연도별 개강일 (D-day 기준) — MM-DD
+const OPEN_DATES={2025:'02-16',2026:'02-19'};
+function ddayOf(year, mo, dy){
+  const od=OPEN_DATES[year]; if(!od) return null;
+  const [om,odd]=od.split('-').map(Number);
+  const d=new Date(Date.UTC(+year,mo-1,dy)), o=new Date(Date.UTC(+year,om-1,odd));
+  return Math.round((d-o)/86400000);
+}
 function parseDailyReport(rows){
   // 제목행에서 연도 인식 [25년…]/[26년…]
   let year=null;
@@ -864,7 +873,7 @@ function drawAnalysis(){
   const series=years.map(y=>{
     let d=AN.series[y];
     if(range>0) d=d.filter(o=>o.idx< range*31);
-    return { year:y, pts:d.map(o=>({ x: axis==='dday'?o.idx : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy })) };
+    return { year:y, pts:d.map(o=>({ x: axis==='dday'?(ddayOf(y,o.mo,o.dy)??o.idx) : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy })) };
   });
   // 범위
   const allX=series.flatMap(s=>s.pts.map(p=>p.x));
@@ -892,9 +901,36 @@ function drawAnalysis(){
     const dpath=s.pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
     return `<path d="${dpath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>`;
   }).join('');
-  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${xg.join('')}${zero}${paths}</svg>`;
+  // 오늘(최신 연도의 마지막 D-day) 세로선 + 이맘때 비교
+  let todayLine='', compareHtml='';
+  const curYear=years[years.length-1];
+  const curData=AN.series[curYear];
+  if(axis==='dday' && curData && curData.length){
+    const last=curData[curData.length-1];
+    const dd=ddayOf(curYear,last.mo,last.dy);
+    if(dd!=null && dd>=minX && dd<=maxX){
+      const xx=sx(dd);
+      todayLine=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".7"/>`+
+        `<text x="${xx}" y="${pad.t-4}" text-anchor="middle" font-size="11" fill="var(--teal-ink)" font-weight="700">오늘 D+${dd}</text>`;
+      // 같은 D-day에서 각 연도 값
+      const valAt=(y)=>{ const arr=AN.series[y]||[]; let best=null;
+        for(const o of arr){ const od=ddayOf(y,o.mo,o.dy); if(od===dd){ best=o[metric]||0; break; } if(od!=null&&od<=dd) best=o[metric]||0; }
+        return best; };
+      const cur=valAt(curYear);
+      compareHtml=years.map(y=>{
+        const v=valAt(y);
+        if(v==null) return '';
+        const col=AN_COLORS[y]||'#888';
+        let diff='';
+        if(y!==curYear && cur!=null){ const d=cur-v; diff=` <span style="color:${d>=0?'var(--teal-ink)':'var(--red)'}">(${d>=0?'+':''}${d})</span>`; }
+        return `<span class="chip" style="border:1px solid ${col};color:${col};padding:6px 12px;border-radius:999px;font-weight:700">${y} 이맘때(D+${dd}) ${v}${diff}</span>`;
+      }).filter(Boolean).join('');
+    }
+  }
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${xg.join('')}${zero}${todayLine}${paths}</svg>`;
+  document.getElementById('anCompare').innerHTML=compareHtml;
   document.getElementById('anLegend').innerHTML='범례: '+series.map(s=>`<span style="color:${AN_COLORS[s.year]||'#888'};font-weight:700">● ${s.year}</span>`).join('  ')+
-    (axis==='dday'?' · X축=개강 첫 보고일부터 경과일':' · X축=달력(월/일)');
+    (axis==='dday'?` · X축=개강일 기준 경과일(2025 개강 2/16 · 2026 개강 2/19)`:' · X축=달력(월/일)');
 }
 
 
@@ -1127,7 +1163,9 @@ function aggregateRoster(){
   for(const st of R.students){ if(!st.sid||!st.jang) continue;
     const real=isReal(st.ban), unassigned=!String(st.ban).trim();
     if(!real && !unassigned) continue;
-    const curr=mdNum(st._row[currCol]); if(curr!==Dmd) continue;
+    const curr=mdNum(st._row[currCol]);
+    const prev=prevCol>=0?mdNum(st._row[prevCol]):null;
+    if(curr!==Dmd || prev!=null) continue;        // 편성 개념: 오늘 신규(편입)만 등록(+)
     const L=jangCodeToLabel(st.jang); if(!L){ unmapped.add(st.jang); continue; }
     perJang[L].등록++; if(st.sex==='남') perJang[L].등록남++; else if(st.sex==='여') perJang[L].등록여++;
   }
