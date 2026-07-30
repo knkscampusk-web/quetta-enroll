@@ -998,14 +998,17 @@ function mdNum(v){
 }
 // 앱 날짜 '2026-07-06' → 706
 function dateToMd(d){ const m=String(d||'').match(/^\d{4}-(\d{2})-(\d{2})$/); return m? (+m[1])*100+(+m[2]) : null; }
-// 접수대장(2D): A(0)=접수일'M/D(요일)', J(9)=전형 → 오늘(baseDate) 전형별 접수 수
+// 접수대장(2D): A(0)=접수일('M/D(요일)' 또는 ISO 날짜), J(9)=전형 → 오늘(baseDate) 전형별 접수 수
 function countReceiptToday(rows, baseDate){
   const md=dateToMd(baseDate); if(md==null) return {};
   const out={};
   for(const r of (rows||[]).slice(1)){
-    const a=String(r[0]||'').trim(); const m=a.match(/(\d{1,2})\/(\d{1,2})/);
-    if(!m) continue;
-    if((+m[1])*100+(+m[2])!==md) continue;
+    const a=String(r[0]||'').trim(); if(!a) continue;
+    let am=null;
+    const m=a.match(/(\d{1,2})\/(\d{1,2})/);       // '7/24(금)' 텍스트
+    if(m) am=(+m[1])*100+(+m[2]);
+    else am=mdNum(a);                               // ISO/날짜 서식 (KST 보정)
+    if(am==null || am!==md) continue;
     const jh=String(r[9]||'').trim(); if(!jh) continue;
     out[jh]=(out[jh]||0)+1;
   }
@@ -1086,12 +1089,19 @@ function aggregateRoster(){
 
   // 금일 퇴소 = 환불시트에서 퇴소일==기준일 (학생명단에선 삭제되므로 여기서 집계)
   if(STATE.refundData && Array.isArray(STATE.refundData.students)){
+    const rCurr=STATE.refundData.monthCol ? STATE.refundData.monthCol(N) : -1;  // 환불시트의 집계월 칸
     for(const st of STATE.refundData.students){
       if(!/^\d{4,}$/.test(String(st.sid))) continue;
       if(st.out===Dmd){
         const b=pb(isReal(st.ban)?st.ban:'미배정');
-        b.퇴소++; b.재등록환불++;
-        if(st.sex==='남'){b.퇴소남++;b.재등록환불남++;} else if(st.sex==='여'){b.퇴소여++;b.재등록환불여++;}
+        // 퇴소한 사람이 '당월 등록자'였나(집계월 칸에 등록일) vs '미납자'였나(빈칸)
+        const wasReg = rCurr>=0 ? (mdNum(st._row[rCurr])!=null) : false;
+        b.퇴소++;                          // 편성 축 퇴소(둘 다) → 편성계·미납 자동 반영
+        if(st.sex==='남') b.퇴소남++; else if(st.sex==='여') b.퇴소여++;
+        if(wasReg){                        // 당월 등록자였을 때만 재등록환불
+          b.재등록환불++;
+          if(st.sex==='남') b.재등록환불남++; else if(st.sex==='여') b.재등록환불여++;
+        }
       }
     }
   }
