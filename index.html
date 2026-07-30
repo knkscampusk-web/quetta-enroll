@@ -417,14 +417,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 <section class="tab" id="tab-analysis">
   <div class="card">
     <h3><span class="pin"></span> 등록/환불 추이 분석 — 전년 동기 비교</h3>
-    <div class="desc">일자별누적(원장님) 자료를 연도별로 올리면, 등록·환불·등록인원 추이를 겹쳐 비교합니다. 파일 제목의 연도([25년…]/[26년…])를 자동 인식합니다.</div>
-    <div class="row" id="anUploadRow">
-      <label class="drop" id="dropRep" style="flex:1">
-        <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
-        <div><b>일자별누적 파일 올리기</b><br><span class="note" id="repNames">CSV 또는 엑셀 · 여러 개 한 번에 가능</span></div>
-      </label>
-    </div>
-    <div class="row" style="margin-top:14px;align-items:center;gap:14px;flex-wrap:wrap">
+    <div class="row" style="margin-top:4px;align-items:center;gap:14px;flex-wrap:wrap">
       <div class="field"><label>지표</label>
         <select id="anMetric">
           <option value="금일등록">금일 등록</option>
@@ -460,6 +453,16 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       </label>
     </div>
     <div class="note" id="histNote2"></div>
+  </div>
+  <div class="card">
+    <h3><span class="pin"></span> 분석용 자료 업로드 (작년 일자별누적)</h3>
+    <div class="desc">작년 일자별누적(원장님) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 파일 제목의 연도([25년…]/[26년…])를 자동 인식합니다.</div>
+    <div class="row" id="anUploadRow">
+      <label class="drop" id="dropRep" style="flex:1">
+        <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
+        <div><b>일자별누적 파일 올리기</b><br><span class="note" id="repNames">CSV 또는 엑셀 · 여러 개 한 번에 가능</span></div>
+      </label>
+    </div>
   </div>
   <div class="card">
     <h3><span class="pin"></span> 개강일 & 코호트</h3>
