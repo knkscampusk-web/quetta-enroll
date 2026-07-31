@@ -1200,7 +1200,7 @@ function aggregateRoster(){
 
   const zero=()=>({편성:0,신규:0,신규남:0,신규여:0,퇴소:0,퇴소남:0,퇴소여:0,
     재등록:0,재등록남:0,재등록여:0,재등록환불:0,재등록환불남:0,재등록환불여:0,
-    편성계:0,등록계:0,미납:0,전일편성:0,전일등록:0,편입:0,반수:0,장학등록:0,장학환불:0,배정:0,배정남:0,배정여:0,배정등록:0});
+    편성계:0,편성계남:0,편성계여:0,등록계:0,미납:0,전일편성:0,전일등록:0,편입:0,반수:0,장학등록:0,장학환불:0,배정:0,배정남:0,배정여:0,배정등록:0});
   const perBan={}; for(const b of [...banList,'미배정']) perBan[b]=zero();
   const assignMap={};   // 수험번호 → 현재 반(미배정 포함)
   const regMap={};      // 수험번호 → 당월 등록일(mdNum). 등록 축 이동 판정에 사용
@@ -1228,7 +1228,7 @@ function aggregateRoster(){
     const currByPrev = (curr!=null&&curr<=Dmd-1); // 전일까지 (근사: Dmd-1은 같은달 가정)
     const outByD     = (out!=null&&out<=Dmd);
     // 편성계(재원, 절대): 반 배정 & 미퇴소(≤D)
-    if(!outByD) b.편성계++;
+    if(!outByD){ b.편성계++; if(sex==='남') b.편성계남++; else if(sex==='여') b.편성계여++; }
     // 등록계(당월 재등록 누적, ≤D)
     if(currByD) b.등록계++;
     // 미납: 전월 등록 & 당월 미등록(≤D) & 미퇴소(≤D)
@@ -1403,46 +1403,23 @@ async function renderDash(){
     ? `<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거 데이터 (raw 로그)</span> 작성자 ${R.writer||'-'}`
     : `작성자 ${R.writer||'-'} · 모든 반/전형 0 포함 출력은 raw 탭에서`;
 
-  let pBan, prevAssign=null, prevKey='', prevSrc='', prevInfo='';
+  let pBan;
   if(R._prevBan!==undefined){ pBan = R._prevBan; }
-  else {
-    const F=await findPrevDaily(R.base, R.season);
-    if(F.pick){
-      pBan=F.pick.data.perBan||null; prevKey=F.pick.key; prevSrc=F.pick.src;
-      if(F.pick.data.regTotal!=null) R._prevRegTotal=F.pick.data.regTotal;
-      if(F.pick.data.assignMap) prevAssign=F.pick.data.assignMap;
-    }
-    prevInfo=F.recent||`(daily 문서 ${F.total}개 중 ${R.base} 이전 없음)`;
-  }
-  R._prevDiag={key:prevKey, src:prevSrc, hasBan:!!pBan, hasMap:!!prevAssign,
-               tried:prevInfo, err:LOADERR};
+  else { const prev=await loadDaily(prevDateKey(R.base, R.season)); pBan = prev&&prev.perBan ? prev.perBan : null;
+         if(prev&&prev.regTotal!=null) R._prevRegTotal=prev.regTotal; }
 
-  // ── 반배정 이동 (편성 축 + 등록 축 둘 다) ──
-  // 재실행 시 누적되지 않도록 먼저 초기화
-  for(const k in R.perBan){ const x=R.perBan[k]; x.배정=0; x.배정남=0; x.배정여=0; x.배정등록=0; }
-  R._moveOK=false; R._moveBase=prevKey||'';
-  if(R._roster && R._assign && prevAssign){
-    R._moveOK=true;
-    const rm=R._regmap||{}, sm=R._sexmap||{};
-    for(const sid in R._assign){
-      const now=R._assign[sid], was=prevAssign[sid];
-      if(!was || !now || was===now) continue;           // 어제 없던 사람(=오늘 신규)은 이동 아님
-      if(!R.perBan[now] || !R.perBan[was]) continue;
-      R.perBan[now].배정++; R.perBan[was].배정--;        // 편성 축
-      const sx=sm[sid];
-      if(sx==='남'){ R.perBan[now].배정남++; R.perBan[was].배정남--; }
-      else if(sx==='여'){ R.perBan[now].배정여++; R.perBan[was].배정여--; }
-      if(rm[sid]!=null){ R.perBan[now].배정등록++; R.perBan[was].배정등록--; } // 등록 축(당월 등록자만)
-    }
-  }
-
-  // 전일값: 어제 저장본의 편성계/등록계를 그대로 사용해야
-  // 전일 + 신규 − 퇴소 + 반배정 = 편성계 항등식이 성립함 (역산은 이동분을 흡수해서 어긋남)
-  if(R._roster && pBan){
+  // ── 전일값 = 2026정규 시트의 어제 마감 소계 (J=남, N=여, R=등록계) ──
+  // 반배정 = 편성계 − 전일 − 신규 + 퇴소. 시트가 기준이라 저장 스냅샷이 필요 없음.
+  if(R._roster && STATE.sheetPrev){
+    const SP=STATE.sheetPrev, num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
-      const b=R.perBan[ban], p=pBan[ban]; if(!b||!p) continue;
-      if(p.편성계!=null) b.전일편성=p.편성계;
-      if(p.등록계!=null) b.전일등록=p.등록계;
+      const b=R.perBan[ban], p=SP[ban]; if(!b||!p) continue;
+      b.전일편성 = num(p.J)+num(p.N);
+      b.전일등록 = num(p.R);
+      b.배정남   = b.편성계남 - num(p.J) - (b.신규남||0) + (b.퇴소남||0);
+      b.배정여   = b.편성계여 - num(p.N) - (b.신규여||0) + (b.퇴소여||0);
+      b.배정     = b.배정남 + b.배정여;
+      b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
   }
 
@@ -1570,32 +1547,6 @@ async function renderDash(){
   document.getElementById('dashTable').innerHTML=
     `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>반배정</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
 
-  // 정합성 검산: 전일편성 + 신규 − 퇴소 + 반배정 = 편성계 (어긋나면 표 아래 경고)
-  if(R._roster){
-    const bad=[];
-    for(const ban of [...R.banList,'미배정']){
-      const b=R.perBan[ban]; if(!b) continue;
-      const calc=(b.전일편성||0)+(b.신규||0)-(b.퇴소||0)+(b.배정||0);
-      if(calc!==b.편성계) bad.push(`${ban}(${calc}≠${b.편성계})`);
-    }
-    const tbl=document.getElementById('dashTable');
-    const wrap=tbl.closest('.tablewrap')||tbl.parentElement;   // 스크롤 영역 바깥에 붙임
-    let note=document.getElementById('moveNote');
-    if(!note && wrap && wrap.parentElement){ note=document.createElement('div'); note.id='moveNote'; note.className='note'; wrap.parentElement.insertBefore(note, wrap.nextSibling); }
-    const D=R._prevDiag||{};
-    if(note){
-      if(!D.hasBan){
-        note.innerHTML=`⚠ <b>전일 저장본 없음</b> — daily 컬렉션에서 ${R.base} 이전 문서를 못 찾았습니다. 최근: ${D.tried||'-'}`+
-          (D.err?` · 오류: <code>${D.err}</code>`:``);
-      } else if(!D.hasMap){
-        note.innerHTML=`전일 저장본 <b>${D.key}</b> (${D.src}) 은 읽었는데 <b>assignMap이 없습니다</b> → 반배정 계산 불가. 최근 저장본: ${D.tried}`;
-      } else {
-        note.innerHTML=`반배정 비교 기준: <b>${D.key}</b> (${D.src})`+
-          (bad.length?` · ⚠ 불일치: ${bad.join(', ')}`:` · 검산 통과 (전일+신규−퇴소+반배정=편성계)`);
-      }
-    }
-  }
-
   // ② 재등록 표 (등록−미등록)
   const isLive = !R._historical && !R._cumulative && !R._roster;
   const r2=[];
@@ -1605,19 +1556,17 @@ async function renderDash(){
       <td class="mono">${isLive?'':b.전일등록}</td>
       <td class="mono">${b.재등록||''}</td>
       <td class="mono">${b.재등록환불?'-'+b.재등록환불:''}</td>
-      <td class="mono ${b.배정등록<0?'neg':''}" style="${b.배정등록>0?'color:var(--teal-ink);font-weight:700':''}">${mv(b.배정등록||0)}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
       <td class="mono">${b.재등록남||''}</td><td class="mono">${b.재등록여||''}</td>
       <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
   }
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
-  T.배정등록=Object.values(R.perBan).reduce((a,b)=>a+(b.배정등록||0),0);
   r2.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${T.배정등록?mv(T.배정등록):'0'}</td><td class="mono">${soRegTot}</td>
+    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${T.재등록남}</td><td class="mono">${T.재등록여}</td><td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
-  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>반배정</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
+  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
 
   // 라이브: 등록계(당월 재등록 누적)·미납은 경영지원 기준으로 (반별 아님, 총계)
   if(isLive){
@@ -1785,32 +1734,6 @@ async function saveDaily(){
     console.error(e);
     toast('⚠ Firebase 저장 실패: '+(e.code||e.message)+' (로컬엔 저장됨)');
   }
-}
-let LOADERR='';
-// daily 컬렉션을 실제로 훑어 base 이전 최근 저장본을 고름 (키 형식/시즌/주말 공백에 안 휘둘리게)
-async function findPrevDaily(base, season){
-  const cands=[];
-  if(fbReady){
-    try{
-      const snap=await getDocs(collection(db,COL('daily')));
-      snap.forEach(d=>{ const m=d.id.match(/^(\d{4}-\d{2}-\d{2})_(.+)$/); if(!m) return;
-        cands.push({key:d.id, date:m[1], season:m[2], src:'FB', data:d.data()}); });
-    }catch(e){ LOADERR=(e.code||e.message||String(e)); }
-  } else LOADERR='fbReady=false';
-  try{
-    const pre=LK('daily_');
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i); if(!k||k.indexOf(pre)!==0) continue;
-      const id=k.slice(pre.length); const m=id.match(/^(\d{4}-\d{2}-\d{2})_(.+)$/); if(!m) continue;
-      if(cands.some(c=>c.key===id)) continue;
-      try{ cands.push({key:id, date:m[1], season:m[2], src:'로컬', data:JSON.parse(localStorage.getItem(k))}); }catch(e){}
-    }
-  }catch(e){}
-  const same=cands.filter(c=>c.season===season && c.date<base);
-  const pool=(same.length?same:cands.filter(c=>c.date<base)).sort((a,b)=> a.date<b.date?1:-1);
-  const withMap=pool.find(c=>c.data && c.data.assignMap);
-  return { pick: withMap||pool[0]||null, total:cands.length,
-           recent: pool.slice(0,3).map(c=>c.key+(c.data&&c.data.assignMap?'✓':'✗')).join(', ') };
 }
 async function loadDaily(key){
   if(!key) return null;
@@ -2057,11 +1980,17 @@ document.getElementById('rosterBtn').onclick=async()=>{
   if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
   try{
-    const [ro,rc,rf,rl]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null), fetchSheet('receiptlog').catch(()=>null)]);
+    const [ro,rc,rf,rl,rp]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null), fetchSheet('receiptlog').catch(()=>null), fetchSheet('report').catch(()=>null)]);
     STATE.rosterData=parseRoster(ro.rows); setLed('roster');
     if(rc){ STATE.receipt=parseReceiptRows(rc.rows); setLed('master'); }
     if(rf){ STATE.refundData=parseRoster(rf.rows); setLed('refund'); }
     if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); STATE.receiptRows=rl.rows; }
+    // 2026정규 시트의 어제 마감 소계 = 전일값의 진짜 출처
+    STATE.sheetPrev=null;
+    if(rp && rp.rows){ const m={};
+      for(const row of rp.rows){ if(String(row[0]).trim()==='정규시즌'){
+        m[String(row[1]).trim()]={J:row[9], N:row[13], R:row[17]}; } }
+      STATE.sheetPrev=m; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
     aggregateRoster();
