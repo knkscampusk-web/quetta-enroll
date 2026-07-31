@@ -455,8 +455,8 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="note" id="histNote2"></div>
   </div>
   <div class="card">
-    <h3><span class="pin"></span> 분석용 자료 업로드 (작년 일자별누적)</h3>
-    <div class="desc">작년 일자별누적(원장님) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 파일 제목의 연도([25년…]/[26년…])를 자동 인식합니다.</div>
+    <h3><span class="pin"></span> 분석용 자료 업로드 (작년 raw 로그)</h3>
+    <div class="desc">작년 raw(2025raw정규) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 날짜의 연도를 자동 인식합니다.</div>
     <div class="row" id="anUploadRow">
       <label class="drop" id="dropRep" style="flex:1">
         <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
@@ -787,6 +787,34 @@ function ddayOf(year, mo, dy){
   const d=new Date(Date.UTC(+year,mo-1,dy)), o=new Date(Date.UTC(+year,om-1,odd));
   return Math.round((d-o)/86400000);
 }
+// raw(2026raw정규 형식) → 연도별 일별 시계열 {금일등록=신규, 금일환불=-퇴소, 재등록, 등록인원(누적)}
+function parseRawToSeries(rows){
+  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
+  if(hi<0) return null;
+  const H={}; rows[hi].forEach((h,i)=>H[String(h).trim()]=i);
+  const ci={날짜:H['날짜'], 구분:H['구분'], 등록:H['등록'], 환불:H['환불']};
+  if(ci.구분==null||ci.등록==null) return null;
+  const n=x=>{ const v=parseInt(String(x).replace(/[^\-0-9]/g,'')); return isNaN(v)?0:v; };
+  const byDate={}; let year=null;
+  for(const r of rows.slice(hi+1)){
+    const draw=String(r[ci.날짜]||'').trim(); if(!draw) continue;
+    const m=draw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})|(\d{1,2})\/(\d{1,2})/);
+    if(!m) continue;
+    let yy,mo,dy;
+    if(m[1]){ yy=+m[1]; mo=+m[2]; dy=+m[3]; } else { mo=+m[4]; dy=+m[5]; }
+    if(yy) year=year||yy;
+    const key=`${mo}-${dy}`;
+    const gb=String(r[ci.구분]||'').trim();
+    if(!byDate[key]) byDate[key]={mo,dy,신규:0,퇴소:0,재등록:0};
+    const deung=n(r[ci.등록]), hwan=Math.abs(n(r[ci.환불]));
+    if(gb==='개강후'){ byDate[key].신규+=deung; byDate[key].퇴소+=hwan; }
+    else if(gb==='6월'||gb==='재등록'){ byDate[key].재등록+=deung; }
+  }
+  const data=Object.values(byDate).sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
+  let cum=0;
+  data.forEach((o,i)=>{ o.idx=i; o.금일등록=o.신규; o.금일환불=-o.퇴소; cum+=o.신규-o.퇴소; o.등록인원=cum; });
+  return { year, data };
+}
 function parseDailyReport(rows){
   // 제목행에서 연도 인식 [25년…]/[26년…]
   let year=null;
@@ -803,7 +831,6 @@ function parseDailyReport(rows){
     out.push({mo:+m[1],dy:+m[2],금일등록:n(r[2]),금일환불:n(r[3]),등록인원:n(r[4])});
   }
   out.forEach((o,i)=>o.idx=i); // D-day(개강기준 순번)
-  // 누적합
   let cr=0,cf=0; out.forEach(o=>{ cr+=o.금일등록; cf+=o.금일환불; o.cumReg=cr; o.cumRef=cf; });
   return { year, data:out };
 }
@@ -817,7 +844,10 @@ async function loadReportFile(file){
     const txt=await file.text();
     rows=txt.split(/\r?\n/).map(l=>l.split(','));
   }
-  const p=parseDailyReport(rows);
+  // 형식 자동 감지: '구분' 열 있으면 raw, 아니면 일자별누적
+  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
+  const isRaw = hi>=0 && rows[hi].some(h=>String(h).trim()==='구분');
+  const p = isRaw ? parseRawToSeries(rows) : parseDailyReport(rows);
   if(!p){ toast(`${file.name}: 형식 인식 실패`); return; }
   const yr=p.year||('파일'+Object.keys(AN.series).length);
   AN.series[yr]=p.data;
