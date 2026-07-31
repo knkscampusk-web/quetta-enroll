@@ -803,29 +803,41 @@ function ddayOf(year, mo, dy){
 function parseRawToSeries(rows){
   const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
   if(hi<0) return null;
-  const H={}; rows[hi].forEach((h,i)=>H[String(h).trim()]=i);
-  const ci={날짜:H['날짜'], 구분:H['구분'], 등록:H['등록'], 환불:H['환불']};
+  // ⚠ 헤더에 '날짜'·'전형'이 두 번 등장(우측 피벗 보조표). 반드시 '먼저 나온 열' 선점.
+  const H={}; rows[hi].forEach((h,i)=>{ const k=String(h).trim(); if(k&&H[k]==null) H[k]=i; });
+  const ci={날짜:H['날짜'], 구분:H['구분'], 등록:H['등록'], 환불:H['환불'], 접수:H['접수']};
   if(ci.구분==null||ci.등록==null) return null;
   const n=x=>{ const v=parseInt(String(x).replace(/[^\-0-9]/g,'')); return isNaN(v)?0:v; };
-  const byDate={}; let year=null;
+  const byDate={}; let year=null; let seen=0, used=0;
+  const gbSet={};
   for(const r of rows.slice(hi+1)){
     const draw=String(r[ci.날짜]||'').trim(); if(!draw) continue;
+    seen++;
     const m=draw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})|(\d{1,2})\/(\d{1,2})/);
     if(!m) continue;
     let yy,mo,dy;
     if(m[1]){ yy=+m[1]; mo=+m[2]; dy=+m[3]; } else { mo=+m[4]; dy=+m[5]; }
     if(yy) year=year||yy;
+    used++;
     const key=`${mo}-${dy}`;
     const gb=String(r[ci.구분]||'').trim();
-    if(!byDate[key]) byDate[key]={mo,dy,신규:0,퇴소:0,재등록:0};
+    gbSet[gb]=(gbSet[gb]||0)+1;
+    if(!byDate[key]) byDate[key]={mo,dy,신규:0,퇴소:0,재등록:0,재등록환불:0,개강전등록:0,개강전환불:0,개강전접수:0};
     const deung=n(r[ci.등록]), hwan=Math.abs(n(r[ci.환불]));
+    const jubsu=ci.접수==null?0:n(r[ci.접수]);
     if(gb==='개강후'){ byDate[key].신규+=deung; byDate[key].퇴소+=hwan; }
-    else if(gb==='6월'||gb==='재등록'){ byDate[key].재등록+=deung; }
+    else if(gb==='개강전'){ byDate[key].개강전등록+=deung; byDate[key].개강전환불+=hwan; byDate[key].개강전접수+=jubsu; }
+    // 월별 재등록: '3월'~'11월' 전부. (기존엔 '6월'만 잡혀 5,000건 이상 누락됐음)
+    else if(/^\d{1,2}월$/.test(gb)||gb==='재등록'){ byDate[key].재등록+=deung; byDate[key].재등록환불+=hwan; }
   }
   const data=Object.values(byDate).sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
   let cum=0;
   data.forEach((o,i)=>{ o.idx=i; o.금일등록=o.신규; o.금일환불=-o.퇴소; cum+=o.신규-o.퇴소; o.등록인원=cum; });
-  return { year, data };
+  const peak=data.reduce((a,o)=>o.금일등록>a.금일등록?o:a, {금일등록:0,mo:0,dy:0});
+  const diag={ 날짜열:ci.날짜, 행수:seen, 인식:used, 날짜키:data.length,
+    최대금일등록:`${peak.금일등록} (${peak.mo}/${peak.dy})`,
+    구분:Object.keys(gbSet).join('/') };
+  return { year, data, diag };
 }
 function parseDailyReport(rows){
   // 제목행에서 연도 인식 [25년…]/[26년…]
@@ -863,6 +875,7 @@ async function loadReportFile(file){
   if(!p){ toast(`${file.name}: 형식 인식 실패`); return; }
   const yr=p.year||('파일'+Object.keys(AN.series).length);
   AN.series[yr]=p.data;
+  AN.lastDiag = p.diag ? {file:file.name, year:yr, ...p.diag} : null;
   return yr;
 }
 (function wireAnalysis(){
@@ -877,7 +890,13 @@ async function loadReportFile(file){
   async function handleRepFiles(files){
     const names=[];
     for(const f of files){ const yr=await loadReportFile(f); if(yr){ names.push(yr); await saveAnalysisYear(yr, AN.series[yr]); } }
-    document.getElementById('repNames').textContent=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
+    const el=document.getElementById('repNames');
+    let html=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
+    const d=AN.lastDiag;
+    if(d) html+=`<div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6">`+
+      `진단 · ${d.file} → ${d.year}년 / 날짜열 idx=${d.날짜열} / 날짜있는행 ${d.행수} → 인식 ${d.인식} / 날짜키 ${d.날짜키}개<br>`+
+      `최대 금일등록 = <b style="color:var(--teal-ink)">${d.최대금일등록}</b> · 구분값: ${d.구분}</div>`;
+    el.innerHTML=html;
     drawAnalysis();
   }
   // 이벤트 메모
