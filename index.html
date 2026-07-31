@@ -431,12 +431,23 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
         <select id="anAxis"><option value="dday">개강 D-day</option><option value="cal">달력 날짜</option></select>
       </div>
       <div class="field"><label>구간(월)</label>
-        <select id="anRange"><option value="0">전체</option><option value="1">1개월</option><option value="3">3개월</option><option value="6">6개월</option></select>
+        <select id="anRange"><option value="0" selected>전체</option><option value="1">1개월</option><option value="3">3개월</option><option value="6">6개월</option></select>
       </div>
     </div>
     <div id="anChart" style="margin-top:16px"></div>
     <div id="anCompare" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px"></div>
     <div class="note" id="anLegend" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card" id="memoCard">
+    <h3><span class="pin"></span> 이벤트 메모 (변화 요인 기록)</h3>
+    <div class="desc">등록/환불에 영향 준 이벤트를 날짜와 함께 남기면, 그래프에 보라 점선 마커로 표시돼 팀·원장님이 함께 봅니다. (예: 경쟁업체 개강, 설명회, 시험일)</div>
+    <div class="row" id="memoInputRow" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <input type="date" id="memoDate" style="width:170px">
+      <input type="text" id="memoText" placeholder="이벤트 내용 (예: 경쟁업체 개강)" style="flex:1;min-width:200px">
+      <button class="btn pri" id="memoAddBtn">메모 추가</button>
+    </div>
+    <div id="memoList" style="margin-top:12px"></div>
   </div>
 </section>
 
@@ -750,6 +761,7 @@ function applyRole(role){
   });
   const fab=document.getElementById('settingsFab'); if(fab) fab.style.display = viewer ? 'none' : '';
   const up=document.getElementById('anUploadRow'); if(up) up.style.display = viewer ? 'none' : '';
+  const mi=document.getElementById('memoInputRow'); if(mi) mi.style.display = viewer ? 'none' : '';
 }
 
 async function enterGate(){
@@ -777,7 +789,7 @@ document.getElementById('setBack').onclick=()=>switchTab('dash');
 /* ===================================================================
  * 분석 — 일자별누적 전년 동기 비교
  * =================================================================== */
-const AN={ series:{} }; // {year: [{mo,dy,금일등록,금일환불,등록인원,idx}]}
+const AN={ series:{}, memos:[] }; // series:{year:[...]}, memos:[{year,mo,dy,text,id}]
 const AN_COLORS={2025:'#7E8CC6',2026:'#00B2BE',2024:'#E5943A',2027:'#C0577B'};
 // 연도별 개강일 (D-day 기준) — MM-DD
 const OPEN_DATES={2025:'02-16',2026:'02-19'};
@@ -868,7 +880,34 @@ async function loadReportFile(file){
     document.getElementById('repNames').textContent=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
     drawAnalysis();
   }
+  // 이벤트 메모
+  const addBtn=document.getElementById('memoAddBtn');
+  if(addBtn){
+    addBtn.onclick=async()=>{
+      const dv=document.getElementById('memoDate').value, tv=document.getElementById('memoText').value.trim();
+      if(!dv||!tv){ toast('날짜와 내용을 입력하세요'); return; }
+      const [y,mo,dy]=dv.split('-').map(Number);
+      AN.memos=AN.memos||[]; AN.memos.push({year:y,mo,dy,text:tv,id:Date.now()});
+      AN.memos.sort((a,b)=>(a.year-b.year)||(a.mo*100+a.dy)-(b.mo*100+b.dy));
+      await saveMemos(); document.getElementById('memoText').value='';
+      renderMemos(); drawAnalysis(); toast('메모 추가됨');
+    };
+  }
+  renderMemos();
 })();
+function renderMemos(){
+  const box=document.getElementById('memoList'); if(!box) return;
+  const ms=AN.memos||[];
+  if(!ms.length){ box.innerHTML='<div class="note">아직 메모가 없어요.</div>'; return; }
+  box.innerHTML=ms.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">`+
+    `<span style="color:var(--peri-ink);font-weight:700;min-width:82px">${m.year}.${m.mo}.${m.dy}</span>`+
+    `<span style="flex:1">${m.text}</span>`+
+    `<button class="btn" data-memo="${m.id}" style="padding:4px 10px;font-size:13px">삭제</button></div>`).join('');
+  box.querySelectorAll('[data-memo]').forEach(b=>b.onclick=async()=>{
+    AN.memos=(AN.memos||[]).filter(x=>String(x.id)!==b.dataset.memo);
+    await saveMemos(); renderMemos(); drawAnalysis();
+  });
+}
 // 분석 시리즈 Firebase 저장/로드 (뷰어도 파일 없이 보게)
 async function saveAnalysisYear(year, data){
   if(!fbReady) return;
@@ -877,8 +916,13 @@ async function saveAnalysisYear(year, data){
 async function loadAnalysisAll(){
   if(!fbReady) return;
   try{ const snap=await getDocs(collection(db,COL('analysis')));
-    snap.forEach(d=>{ const v=d.data(); if(v&&Array.isArray(v.data)){ v.data.forEach((o,i)=>o.idx=i); let cr=0,cf=0; v.data.forEach(o=>{cr+=o.금일등록||0;cf+=o.금일환불||0;o.cumReg=cr;o.cumRef=cf;}); AN.series[v.year]=v.data; } });
+    snap.forEach(d=>{ if(d.id==='_memos'){ const v=d.data(); AN.memos=Array.isArray(v.list)?v.list:[]; return; }
+      const v=d.data(); if(v&&Array.isArray(v.data)){ v.data.forEach((o,i)=>o.idx=i); let cr=0,cf=0; v.data.forEach(o=>{cr+=o.금일등록||0;cf+=o.금일환불||0;o.cumReg=cr;o.cumRef=cf;}); AN.series[v.year]=v.data; } });
   }catch(e){ console.error(e); }
+}
+async function saveMemos(){
+  if(!fbReady){ try{ localStorage.setItem(LK('memos'), JSON.stringify(AN.memos||[])); }catch(e){} return; }
+  try{ await setDoc(doc(db,COL('analysis'),'_memos'),{list:AN.memos||[],savedAt:Date.now()}); }catch(e){ console.error(e); }
 }
 // 올해 원장님 보고 한 점 자동 축적 (현황 저장 시 호출)
 async function accumulateAnalysisPoint(R){
@@ -895,75 +939,87 @@ async function accumulateAnalysisPoint(R){
   await saveAnalysisYear(yr, data);
   AN.series[yr]=data;
 }
+const METRIC_LABEL={금일등록:'금일 등록(신규)','금일환불':'금일 환불(퇴소)',등록인원:'등록인원(누적 재원)',cumReg:'등록 누적합',cumRef:'환불 누적합',재등록:'재등록'};
+function ddayToDate(year, dd){ // D-day → 'M/D'
+  const od=OPEN_DATES[year]; if(od==null) return '';
+  const [om,odd]=od.split('-').map(Number);
+  const d=new Date(Date.UTC(+year,om-1,odd)); d.setUTCDate(d.getUTCDate()+dd);
+  return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;
+}
 function drawAnalysis(){
   const box=document.getElementById('anChart'); if(!box) return;
   const years=Object.keys(AN.series).sort();
-  if(!years.length){ box.innerHTML=`<div class="note">일자별누적 파일을 올려주세요.</div>`; return; }
+  if(!years.length){ box.innerHTML=`<div class="note">분석할 자료가 없어요. 설정에서 작년 raw를 올리거나, 올해 현황을 저장하세요.</div>`;
+    document.getElementById('anCompare').innerHTML=''; document.getElementById('anLegend').innerHTML=''; return; }
   const metric=document.getElementById('anMetric').value;
   const axis=document.getElementById('anAxis').value;
   const range=parseInt(document.getElementById('anRange').value)||0;
-  // 시리즈 구성
+  // 기준 연도(최신)의 오늘 D-day
+  const curYear=years[years.length-1];
+  const curData=AN.series[curYear]||[];
+  const last=curData[curData.length-1];
+  const todayDD=last?ddayOf(curYear,last.mo,last.dy):null;
+  // 시리즈 구성 (D-day 기준 구간 필터)
   const series=years.map(y=>{
-    let d=AN.series[y];
-    if(range>0) d=d.filter(o=>o.idx< range*31);
-    return { year:y, pts:d.map(o=>({ x: axis==='dday'?(ddayOf(y,o.mo,o.dy)??o.idx) : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy })) };
+    let d=AN.series[y].map(o=>({...o, dd:ddayOf(y,o.mo,o.dy)}));
+    if(range>0 && todayDD!=null){ const lo=todayDD-range*31; d=d.filter(o=>o.dd!=null && o.dd>=lo && o.dd<=todayDD+3); }
+    return { year:y, pts:d.map(o=>({ x: axis==='dday'?(o.dd??o.idx) : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy, dd:o.dd })) };
   });
-  // 범위
   const allX=series.flatMap(s=>s.pts.map(p=>p.x));
   const allY=series.flatMap(s=>s.pts.map(p=>p.y));
-  if(!allX.length){ box.innerHTML='<div class="note">데이터 없음</div>'; return; }
+  if(!allX.length){ box.innerHTML='<div class="note">해당 구간에 데이터가 없어요.</div>'; return; }
   const minX=Math.min(...allX),maxX=Math.max(...allX);
-  let minY=Math.min(0,...allY),maxY=Math.max(...allY,1);
-  const W=920,Hh=420,pad={l:56,r:20,t:20,b:46};
+  let minY=Math.min(0,...allY),maxY=Math.max(...allY,1); if(maxY===minY) maxY=minY+1;
+  const W=920,Hh=430,pad={l:64,r:20,t:24,b:60};
   const sx=x=>pad.l+(x-minX)/((maxX-minX)||1)*(W-pad.l-pad.r);
   const sy=y=>Hh-pad.b-(y-minY)/((maxY-minY)||1)*(Hh-pad.t-pad.b);
-  // 격자/축 눈금
+  // Y 격자 + 눈금
   const yticks=5, grid=[];
   for(let i=0;i<=yticks;i++){ const yv=minY+(maxY-minY)*i/yticks; const yy=sy(yv);
     grid.push(`<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/><text x="${pad.l-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(yv)}</text>`); }
-  // X 눈금 (달력이면 월표시, dday면 숫자)
+  // Y축 라벨
+  const yLabel=`<text x="16" y="${Hh/2}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700" transform="rotate(-90 16 ${Hh/2})">${METRIC_LABEL[metric]||metric}</text>`;
+  // X 눈금 (D-day면 "D+n / M/D" 병기)
   const xticks=8, xg=[];
-  for(let i=0;i<=xticks;i++){ const xv=minX+(maxX-minX)*i/xticks; const xx=sx(xv);
-    let lbl = axis==='dday'? Math.round(xv) : `${Math.floor(xv/100)}/${String(Math.round(xv%100)).padStart(2,'0')}`;
-    xg.push(`<text x="${xx}" y="${Hh-pad.b+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${lbl}</text>`); }
-  // 0선
+  for(let i=0;i<=xticks;i++){ const xv=Math.round(minX+(maxX-minX)*i/xticks); const xx=sx(xv);
+    let l1,l2='';
+    if(axis==='dday'){ l1=(xv>=0?'D+':'D')+xv; l2=ddayToDate(curYear,xv); }
+    else { l1=`${Math.floor(xv/100)}/${String(Math.abs(xv%100)).padStart(2,'0')}`; }
+    xg.push(`<text x="${xx}" y="${Hh-pad.b+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${l1}</text>`+
+      (l2?`<text x="${xx}" y="${Hh-pad.b+32}" text-anchor="middle" font-size="10" fill="var(--muted)" opacity=".8">${l2}</text>`:'')); }
+  const xLabel=`<text x="${(pad.l+W-pad.r)/2}" y="${Hh-6}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700">${axis==='dday'?'개강 D-day (개강일=D0)':'달력 날짜'}</text>`;
   const zero = minY<0&&maxY>0 ? `<line x1="${pad.l}" y1="${sy(0)}" x2="${W-pad.r}" y2="${sy(0)}" stroke="var(--ink)" stroke-width="1" opacity=".25"/>`:'';
-  // 라인
-  const paths=series.map(s=>{
-    const col=AN_COLORS[s.year]||'#888';
+  const paths=series.map(s=>{ const col=AN_COLORS[s.year]||'#888';
     const dpath=s.pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
-    return `<path d="${dpath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>`;
-  }).join('');
-  // 오늘(최신 연도의 마지막 D-day) 세로선 + 이맘때 비교
-  let todayLine='', compareHtml='';
-  const curYear=years[years.length-1];
-  const curData=AN.series[curYear];
-  if(axis==='dday' && curData && curData.length){
-    const last=curData[curData.length-1];
-    const dd=ddayOf(curYear,last.mo,last.dy);
-    if(dd!=null && dd>=minX && dd<=maxX){
-      const xx=sx(dd);
-      todayLine=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".7"/>`+
-        `<text x="${xx}" y="${pad.t-4}" text-anchor="middle" font-size="11" fill="var(--teal-ink)" font-weight="700">오늘 D+${dd}</text>`;
-      // 같은 D-day에서 각 연도 값
-      const valAt=(y)=>{ const arr=AN.series[y]||[]; let best=null;
-        for(const o of arr){ const od=ddayOf(y,o.mo,o.dy); if(od===dd){ best=o[metric]||0; break; } if(od!=null&&od<=dd) best=o[metric]||0; }
-        return best; };
-      const cur=valAt(curYear);
-      compareHtml=years.map(y=>{
-        const v=valAt(y);
-        if(v==null) return '';
-        const col=AN_COLORS[y]||'#888';
-        let diff='';
-        if(y!==curYear && cur!=null){ const d=cur-v; diff=` <span style="color:${d>=0?'var(--teal-ink)':'var(--red)'}">(${d>=0?'+':''}${d})</span>`; }
-        return `<span class="chip" style="border:1px solid ${col};color:${col};padding:6px 12px;border-radius:999px;font-weight:700">${y} 이맘때(D+${dd}) ${v}${diff}</span>`;
-      }).filter(Boolean).join('');
-    }
+    return `<path d="${dpath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>`; }).join('');
+  // 오늘 세로선 + 이맘때 비교 + 이벤트 메모 마커
+  let todayLine='', compareHtml='', memoMarks='';
+  if(axis==='dday' && todayDD!=null && todayDD>=minX && todayDD<=maxX){
+    const xx=sx(todayDD);
+    todayLine=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".7"/>`+
+      `<text x="${xx}" y="${pad.t-6}" text-anchor="middle" font-size="11" fill="var(--teal-ink)" font-weight="700">오늘 D+${todayDD}</text>`;
+    const valAt=(y)=>{ const arr=AN.series[y]||[]; let best=null;
+      for(const o of arr){ const od=ddayOf(y,o.mo,o.dy); if(od!=null&&od<=todayDD) best=o[metric]||0; if(od===todayDD) break; } return best; };
+    const cur=valAt(curYear);
+    compareHtml=years.map(y=>{ const v=valAt(y); if(v==null) return '';
+      const col=AN_COLORS[y]||'#888'; let diff='';
+      if(y!==curYear && cur!=null){ const d=cur-v; diff=` <span style="color:${d>=0?'var(--teal-ink)':'var(--red)'}">(${d>=0?'+':''}${d})</span>`; }
+      return `<span style="border:1px solid ${col};color:${col};padding:6px 12px;border-radius:999px;font-weight:700">${y} 이맘때(D+${todayDD}·${ddayToDate(y,todayDD)}) ${v}${diff}</span>`;
+    }).filter(Boolean).join('');
   }
-  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${xg.join('')}${zero}${todayLine}${paths}</svg>`;
+  // 이벤트 메모 마커 (기준 연도)
+  for(const m of (AN.memos||[])){
+    if(String(m.year)!==String(curYear)) continue;
+    const dd=ddayOf(curYear,m.mo,m.dy); if(dd==null) continue;
+    const xv= axis==='dday'? dd : (m.mo*100+m.dy);
+    if(xv<minX||xv>maxX) continue; const xx=sx(xv);
+    memoMarks+=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--peri)" stroke-width="1" stroke-dasharray="2 2" opacity=".6"/>`+
+      `<circle cx="${xx}" cy="${pad.t+4}" r="4" fill="var(--peri)"><title>${m.mo}/${m.dy} ${m.text}</title></circle>`;
+  }
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${yLabel}${xg.join('')}${xLabel}${zero}${memoMarks}${todayLine}${paths}</svg>`;
   document.getElementById('anCompare').innerHTML=compareHtml;
   document.getElementById('anLegend').innerHTML='범례: '+series.map(s=>`<span style="color:${AN_COLORS[s.year]||'#888'};font-weight:700">● ${s.year}</span>`).join('  ')+
-    (axis==='dday'?` · X축=개강일 기준 경과일(2025 개강 2/16 · 2026 개강 2/19)`:' · X축=달력(월/일)');
+    (axis==='dday'?` · 개강일 D0 (2025 2/16 · 2026 2/19) · 보라 점선=이벤트 메모`:' · 달력 날짜');
 }
 
 
