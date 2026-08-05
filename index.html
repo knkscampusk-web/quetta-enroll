@@ -635,9 +635,12 @@ async function writeRosterDates(month, wy, wm, wd, sids){
 async function fetchSheet(which){
   const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}&_t=${Date.now()}`;
   const res=await fetch(url, {cache:'no-store'});
-  const j=await res.json();
-  if(j.error) throw new Error(j.error);
-  if(!Array.isArray(j.rows)) throw new Error('rows 없음');
+  const t=await res.text();
+  let j;
+  try{ j=JSON.parse(t); }
+  catch{ throw new Error(`[${which}] HTTP ${res.status} — JSON 아님: ${t.slice(0,120)}`); }
+  if(j.error) throw new Error(`[${which}] ${j.error}`);
+  if(!Array.isArray(j.rows)) throw new Error(`[${which}] rows 없음`);
   return j; // {which, sheet, rows, count}
 }
 // 경영지원 당월 재등록 누적 + 미납 (currTerms/prevTerms 기준)
@@ -1414,11 +1417,11 @@ async function renderDash(){
     const SP=STATE.sheetPrev, num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
       const b=R.perBan[ban], p=SP[ban]; if(!b||!p) continue;
-      b.전일편성 = num(p.J)+num(p.N);
+      b.전일편성 = num(p.C);                      // C열 = 편성 블록 전일편성
       b.전일등록 = num(p.R);
+      b.배정     = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
       b.배정남   = b.편성계남 - num(p.J) - (b.신규남||0) + (b.퇴소남||0);
       b.배정여   = b.편성계여 - num(p.N) - (b.신규여||0) + (b.퇴소여||0);
-      b.배정     = b.배정남 + b.배정여;
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
   }
@@ -1556,17 +1559,19 @@ async function renderDash(){
       <td class="mono">${isLive?'':b.전일등록}</td>
       <td class="mono">${b.재등록||''}</td>
       <td class="mono">${b.재등록환불?'-'+b.재등록환불:''}</td>
+      <td class="mono ${b.배정등록<0?'neg':''}" style="${b.배정등록>0?'color:var(--teal-ink);font-weight:700':''}">${mv(b.배정등록||0)}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
       <td class="mono">${b.재등록남||''}</td><td class="mono">${b.재등록여||''}</td>
       <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
   }
+  T.배정등록=Object.values(R.perBan).reduce((a,b)=>a+(b.배정등록||0),0);
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
   r2.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${soRegTot}</td>
+    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${T.배정등록?mv(T.배정등록):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${T.재등록남}</td><td class="mono">${T.재등록여}</td><td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
-  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
+  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>반배정</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
 
   // 라이브: 등록계(당월 재등록 누적)·미납은 경영지원 기준으로 (반별 아님, 총계)
   if(isLive){
@@ -1989,7 +1994,7 @@ document.getElementById('rosterBtn').onclick=async()=>{
     STATE.sheetPrev=null;
     if(rp && rp.rows){ const m={};
       for(const row of rp.rows){ if(String(row[0]).trim()==='정규시즌'){
-        m[String(row[1]).trim()]={J:row[9], N:row[13], R:row[17]}; } }
+        m[String(row[1]).trim()]={C:row[2], J:row[9], N:row[13], R:row[17]}; } }   // C=전일편성(편성블록)
       STATE.sheetPrev=m; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
