@@ -1421,6 +1421,7 @@ async function renderDash(){
 
   // ── 전일값 = 2026정규 시트의 어제 마감 소계 (J=남, N=여, R=등록계) ──
   // 반배정 = 편성계 − 전일 − 신규 + 퇴소. 시트가 기준이라 저장 스냅샷이 필요 없음.
+  R._noPrev = !!(R._roster && !STATE.sheetPrev);
   if(R._roster && STATE.sheetPrev){
     const SP=STATE.sheetPrev, num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
@@ -1542,7 +1543,7 @@ async function renderDash(){
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
     r1.push(`<tr><td>${ban}</td>
-      <td class="mono">${b.전일편성}</td>
+      <td class="mono">${R._noPrev?'–':b.전일편성}</td>
       <td class="mono">${((b.신규||0)+Math.max(0,b.배정||0))||''}</td>
       <td class="mono">${((b.퇴소||0)+Math.max(0,-(b.배정||0)))?'-'+((b.퇴소||0)+Math.max(0,-(b.배정||0))):''}</td>
       <td class="mono"><b>${b.편성계}</b></td>
@@ -1552,7 +1553,7 @@ async function renderDash(){
   const mvIn =Object.values(R.perBan).reduce((a,b)=>a+Math.max(0, b.배정||0),0);
   const mvOut=Object.values(R.perBan).reduce((a,b)=>a+Math.max(0,-(b.배정||0)),0);
   r1.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${T.전일편성}</td><td class="mono">${T.신규+mvIn}</td><td class="mono">${(T.퇴소+mvOut)?'-'+(T.퇴소+mvOut):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
+    <td class="mono">${R._noPrev?'–':T.전일편성}</td><td class="mono">${T.신규+mvIn}</td><td class="mono">${(T.퇴소+mvOut)?'-'+(T.퇴소+mvOut):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
     <td class="mono">${T.신규남}</td><td class="mono">${T.퇴소남?'-'+T.퇴소남:'0'}</td>
     <td class="mono">${T.신규여}</td><td class="mono">${T.퇴소여?'-'+T.퇴소여:'0'}</td></tr>`);
   document.getElementById('dashTable').innerHTML=
@@ -1564,7 +1565,7 @@ async function renderDash(){
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
     r2.push(`<tr><td>${ban}</td>
-      <td class="mono">${isLive?'':b.전일등록}</td>
+      <td class="mono">${isLive?'':(R._noPrev?'–':b.전일등록)}</td>
       <td class="mono">${((b.재등록||0)+Math.max(0,b.배정등록||0))||''}</td>
       <td class="mono">${((b.재등록환불||0)+Math.max(0,-(b.배정등록||0)))?'-'+((b.재등록환불||0)+Math.max(0,-(b.배정등록||0))):''}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
@@ -1576,7 +1577,7 @@ async function renderDash(){
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
   r2.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
+    <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${T.재등록남}</td><td class="mono">${T.재등록여}</td><td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
   if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
@@ -2002,20 +2003,21 @@ document.getElementById('rosterBtn').onclick=async()=>{
       ()=>fetchSheet('receipt').catch(()=>null),
       ()=>fetchSheet('refund').catch(()=>null),
       ()=>fetchSheet('receiptlog').catch(()=>null),
-      ()=>fetchSheet('report').catch(()=>null),
+      ()=>fetchSheet('report').catch(e=>{ STATE.reportErr=e.message||String(e); return null; }),
     ], 250);
     STATE.rosterData=parseRoster(ro.rows); setLed('roster');
     if(rc){ STATE.receipt=parseReceiptRows(rc.rows); setLed('master'); }
     if(rf){ STATE.refundData=parseRoster(rf.rows); setLed('refund'); }
     if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); STATE.receiptRows=rl.rows; }
     // 2026정규 시트의 어제 마감 소계 = 전일값의 진짜 출처
-    STATE.sheetPrev=null;
+    STATE.sheetPrev=null; STATE.reportErr=STATE.reportErr||'';
     if(rp && rp.rows){ const m={};
       for(const row of rp.rows){ if(String(row[0]).trim()==='정규시즌'){
         m[String(row[1]).trim()]={C:row[2], J:row[9], N:row[13], R:row[17]}; } }   // C=전일편성(편성블록)
       STATE.sheetPrev=m; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
-    note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`;
+    note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`
+      + (STATE.sheetPrev ? '' : `<br><span style="color:var(--red)">⚠ 2026정규 시트를 못 읽어 전일편성을 표시할 수 없습니다${STATE.reportErr?' — '+STATE.reportErr:''}</span>`);
     aggregateRoster();
     switchTab('dash');
   }catch(e){ console.error(e);
