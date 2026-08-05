@@ -1543,20 +1543,20 @@ async function renderDash(){
     const b=R.perBan[ban]; if(!b) continue;
     r1.push(`<tr><td>${ban}</td>
       <td class="mono">${b.전일편성}</td>
-      <td class="mono">${b.신규||''}</td>
-      <td class="mono">${b.퇴소?'-'+b.퇴소:''}</td>
-      <td class="mono ${b.배정>0?'':(b.배정<0?'neg':'')}" style="${b.배정>0?'color:var(--teal-ink);font-weight:700':''}">${mv(b.배정||0)}</td>
+      <td class="mono">${((b.신규||0)+Math.max(0,b.배정||0))||''}</td>
+      <td class="mono">${((b.퇴소||0)+Math.max(0,-(b.배정||0)))?'-'+((b.퇴소||0)+Math.max(0,-(b.배정||0))):''}</td>
       <td class="mono"><b>${b.편성계}</b></td>
       <td class="mono">${b.신규남||''}</td><td class="mono">${b.퇴소남?'-'+b.퇴소남:''}</td>
       <td class="mono">${b.신규여||''}</td><td class="mono">${b.퇴소여?'-'+b.퇴소여:''}</td></tr>`);
   }
-  T.배정=Object.values(R.perBan).reduce((a,b)=>a+(b.배정||0),0);
+  const mvIn =Object.values(R.perBan).reduce((a,b)=>a+Math.max(0, b.배정||0),0);
+  const mvOut=Object.values(R.perBan).reduce((a,b)=>a+Math.max(0,-(b.배정||0)),0);
   r1.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${T.전일편성}</td><td class="mono">${T.신규}</td><td class="mono">${T.퇴소?'-'+T.퇴소:'0'}</td><td class="mono">${T.배정?mv(T.배정):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
+    <td class="mono">${T.전일편성}</td><td class="mono">${T.신규+mvIn}</td><td class="mono">${(T.퇴소+mvOut)?'-'+(T.퇴소+mvOut):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
     <td class="mono">${T.신규남}</td><td class="mono">${T.퇴소남?'-'+T.퇴소남:'0'}</td>
     <td class="mono">${T.신규여}</td><td class="mono">${T.퇴소여?'-'+T.퇴소여:'0'}</td></tr>`);
   document.getElementById('dashTable').innerHTML=
-    `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>반배정</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
+    `<thead><tr><th>반</th><th>전일편성</th><th>신규</th><th>퇴소</th><th>편성계</th><th>신규-남</th><th>퇴소-남</th><th>신규-여</th><th>퇴소-여</th></tr></thead><tbody>${r1.join('')}</tbody>`;
 
   // ② 재등록 표 (등록−미등록)
   const isLive = !R._historical && !R._cumulative && !R._roster;
@@ -1565,21 +1565,21 @@ async function renderDash(){
     const b=R.perBan[ban]; if(!b) continue;
     r2.push(`<tr><td>${ban}</td>
       <td class="mono">${isLive?'':b.전일등록}</td>
-      <td class="mono">${b.재등록||''}</td>
-      <td class="mono">${b.재등록환불?'-'+b.재등록환불:''}</td>
-      <td class="mono ${b.배정등록<0?'neg':''}" style="${b.배정등록>0?'color:var(--teal-ink);font-weight:700':''}">${mv(b.배정등록||0)}</td>
+      <td class="mono">${((b.재등록||0)+Math.max(0,b.배정등록||0))||''}</td>
+      <td class="mono">${((b.재등록환불||0)+Math.max(0,-(b.배정등록||0)))?'-'+((b.재등록환불||0)+Math.max(0,-(b.배정등록||0))):''}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
       <td class="mono">${b.재등록남||''}</td><td class="mono">${b.재등록여||''}</td>
       <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
   }
-  T.배정등록=Object.values(R.perBan).reduce((a,b)=>a+(b.배정등록||0),0);
+  const mvRIn =Object.values(R.perBan).reduce((a,b)=>a+Math.max(0, b.배정등록||0),0);
+  const mvROut=Object.values(R.perBan).reduce((a,b)=>a+Math.max(0,-(b.배정등록||0)),0);
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
   r2.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${T.배정등록?mv(T.배정등록):'0'}</td><td class="mono">${soRegTot}</td>
+    <td class="mono">${isLive?'':T.전일등록}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${T.재등록남}</td><td class="mono">${T.재등록여}</td><td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
-  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>반배정</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
+  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
 
   // 라이브: 등록계(당월 재등록 누적)·미납은 경영지원 기준으로 (반별 아님, 총계)
   if(isLive){
