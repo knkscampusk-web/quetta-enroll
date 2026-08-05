@@ -632,16 +632,24 @@ async function writeRosterDates(month, wy, wm, wd, sids){
   if(j.error) throw new Error(j.error);
   return j; // {written[], skipped[], notFound[]}
 }
-async function fetchSheet(which){
-  const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}&_t=${Date.now()}`;
-  const res=await fetch(url, {cache:'no-store'});
-  const t=await res.text();
-  let j;
-  try{ j=JSON.parse(t); }
-  catch{ throw new Error(`[${which}] HTTP ${res.status} — JSON 아님: ${t.slice(0,120)}`); }
-  if(j.error) throw new Error(`[${which}] ${j.error}`);
-  if(!Array.isArray(j.rows)) throw new Error(`[${which}] rows 없음`);
-  return j; // {which, sheet, rows, count}
+async function fetchSheet(which, tries){
+  const max=tries||3; let last='';
+  for(let i=1;i<=max;i++){
+    const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}&_t=${Date.now()}`;
+    try{
+      const res=await fetch(url, {cache:'no-store'});
+      const t=await res.text();
+      let j=null;
+      try{ j=JSON.parse(t); }catch{ throw new Error(`HTTP ${res.status} — JSON 아님: ${t.slice(0,100)}`); }
+      if(j.error) throw new Error(j.error);
+      if(!Array.isArray(j.rows)) throw new Error('rows 없음');
+      return j; // {which, sheet, rows, count}
+    }catch(e){
+      last=e.message||String(e);
+      if(i<max) await new Promise(r=>setTimeout(r, 700*i));   // 간헐 404/429 재시도
+    }
+  }
+  throw new Error(`[${which}] ${max}회 실패 — ${last}`);
 }
 // 경영지원 당월 재등록 누적 + 미납 (currTerms/prevTerms 기준)
 async function sbReRegUnpaid(){
@@ -1985,7 +1993,13 @@ document.getElementById('rosterBtn').onclick=async()=>{
   if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
   try{
-    const [ro,rc,rf,rl,rp]=await Promise.all([fetchSheet('roster'), fetchSheet('receipt').catch(()=>null), fetchSheet('refund').catch(()=>null), fetchSheet('receiptlog').catch(()=>null), fetchSheet('report').catch(()=>null)]);
+    // 동시 요청이 몰리면 Apps Script가 본문 없는 404를 냄 → 순차 호출
+    const step=async(label,fn)=>{ note.textContent=`구글시트 ${label} 불러오는 중…`; return await fn(); };
+    const ro=await step('학생명단', ()=>fetchSheet('roster'));
+    const rc=await step('접수현황', ()=>fetchSheet('receipt').catch(()=>null));
+    const rf=await step('환불',     ()=>fetchSheet('refund').catch(()=>null));
+    const rl=await step('접수대장', ()=>fetchSheet('receiptlog').catch(()=>null));
+    const rp=await step('2026정규', ()=>fetchSheet('report').catch(()=>null));
     STATE.rosterData=parseRoster(ro.rows); setLed('roster');
     if(rc){ STATE.receipt=parseReceiptRows(rc.rows); setLed('master'); }
     if(rf){ STATE.refundData=parseRoster(rf.rows); setLed('refund'); }
@@ -2242,7 +2256,8 @@ document.getElementById('gsLoadBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
   note.textContent='구글시트에서 불러오는 중…';
   try{
-    const [m,r]=await Promise.all([fetchSheet('master'), fetchSheet('receipt')]);
+    const m=await fetchSheet('master');
+    const r=await fetchSheet('receipt');
     STATE.master=parseMasterRows(m.rows);
     STATE.receipt=parseReceiptRows(r.rows);
     setLed('master');
