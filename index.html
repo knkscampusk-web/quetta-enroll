@@ -636,7 +636,7 @@ async function fetchSheet(which, tries){
   const max=tries||3; let last='';
   for(let i=1;i<=max;i++){
     const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&which=${which}&_t=${Date.now()}`;
-    const ac=new AbortController(); const to=setTimeout(()=>ac.abort(), 30000);  // 30초 넘게 매달리지 않음
+    const ac=new AbortController(); const to=setTimeout(()=>ac.abort(), 60000);  // 60초 넘게 매달리지 않음
     try{
       const res=await fetch(url, {cache:'no-store', signal:ac.signal});
       const t=await res.text();
@@ -646,7 +646,7 @@ async function fetchSheet(which, tries){
       if(!Array.isArray(j.rows)) throw new Error('rows 없음');
       return j; // {which, sheet, rows, count}
     }catch(e){
-      last=(e.name==='AbortError') ? '30초 초과(응답 없음)' : (e.message||String(e));
+      last=(e.name==='AbortError') ? '60초 초과(응답 없음)' : (e.message||String(e));
       if(i<max) await new Promise(r=>setTimeout(r, 700*i));   // 간헐 404/429 재시도
     }finally{ clearTimeout(to); }
   }
