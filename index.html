@@ -1576,7 +1576,6 @@ async function renderDash(){
       <td class="mono">${b.재등록||''}</td>
       <td class="mono">${b.재등록환불?'-'+b.재등록환불:''}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
-      <td class="mono">${b.재등록남||''}</td><td class="mono">${b.재등록여||''}</td>
       <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
   }
   const mvRIn =Object.values(R.perBan).reduce((a,b)=>a+Math.max(0, b.배정등록||0),0);
@@ -1585,9 +1584,9 @@ async function renderDash(){
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
   r2.push(`<tr class="tot"><td>소계</td>
     <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${soRegTot}</td>
-    <td class="mono">${T.재등록남}</td><td class="mono">${T.재등록여}</td><td class="mono">${soUnpaid}</td></tr>`);
+    <td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
-  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>재등록-남</th><th>재등록-여</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
+  if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
 
   // 라이브: 등록계(당월 재등록 누적)·미납은 경영지원 기준으로 (반별 아님, 총계)
   if(isLive){
