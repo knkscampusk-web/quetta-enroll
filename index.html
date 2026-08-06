@@ -1426,9 +1426,9 @@ async function renderDash(){
     const SP=STATE.sheetPrev, num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
       const b=R.perBan[ban], p=SP[ban]; if(!b||!p) continue;
-      b.전일편성   = num(p.C);                    // C = G+K 합산
-      b.전일편성남 = num(p.G);                    // G열
-      b.전일편성여 = num(p.K);                    // K열
+      b.전일편성   = num(p.F);                    // F열 = 어제 마감 편성계 (= J+N)
+      b.전일편성남 = num(p.J);                    // J열 소계-남
+      b.전일편성여 = num(p.N);                    // N열 소계-여
       b.전일등록   = num(p.R);
       b.배정남 = b.편성계남 - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
       b.배정여 = b.편성계여 - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
@@ -2017,10 +2017,11 @@ document.getElementById('rosterBtn').onclick=async()=>{
     if(rl){ STATE.receiptToday=countReceiptToday(rl.rows, date); STATE.receiptRows=rl.rows; }
     // 2026정규 시트의 어제 마감 소계 = 전일값의 진짜 출처
     STATE.sheetPrev=null; STATE.reportErr=STATE.reportErr||'';
+    STATE.reportRows = (rp && rp.rows) ? rp.rows : null;   // 개강후 미리보기에서 재사용(중복 호출 제거)
     if(rp && rp.rows){ const m={};
       for(const row of rp.rows){ if(String(row[0]).trim()==='정규시즌'){
-        // C=전일편성(=G+K 합산), G=전일편성-남, K=전일편성-여, R=전일등록계
-        m[String(row[1]).trim()]={C:row[2], G:row[6], K:row[10], R:row[17]}; } }
+        // 전일값 = 어제 마감 '소계' 열. F=편성계(=J+N), J=소계-남, N=소계-여, R=등록계
+        m[String(row[1]).trim()]={F:row[5], J:row[9], N:row[13], R:row[17]}; } }
       STATE.sheetPrev=m; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`
@@ -2095,12 +2096,12 @@ document.getElementById('enrollBtn').onclick=async()=>{
   const note=document.getElementById('enApplyNote');
   const R=STATE.result;
   if(!R||!R._roster||!R.perBan){ toast('먼저 "학생명단으로 등록잡기"를 실행하세요'); return; }
-  note.textContent='2026정규 시트 현재값(어제 마감) 읽는 중…';
+  note.textContent = STATE.reportRows ? '2026정규 시트 값 계산 중…' : '2026정규 시트 현재값(어제 마감) 읽는 중…';
   document.getElementById('enPanel').style.display='block';
   try{
-    const rep=await fetchSheet('report');
+    const repRows = STATE.reportRows || (await fetchSheet('report')).rows;
     const carry={};
-    for(const row of rep.rows){ if(String(row[0]).trim()==='정규시즌'){ const ban=String(row[1]).trim();
+    for(const row of repRows){ if(String(row[0]).trim()==='정규시즌'){ const ban=String(row[1]).trim();
       carry[ban]={J:row[9],N:row[13],R:row[17]}; } }
     const bans=[...R.banList,'미배정'];
     const rows=[]; const payload=[];
