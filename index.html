@@ -1695,7 +1695,7 @@ function rawRows(){
       '등록-여':b.신규여||E, '환불-여':b.퇴소여?-(b.퇴소여):E})); }
   // ④ 6월 재등록 — 재등록 축: 등록=전체 등록(신규 포함), 환불=재등록환불
   for(const ban of bans){ const b=R.perBan[ban]||{};
-    out.push(row({구분:'6월', 전형:'재등록', 반:ban, 등록:b.재등록||E, 환불:b.재등록환불?-(b.재등록환불):E})); }
+    out.push(row({구분:(CFG.billMonth||new Date().getMonth()+1)+'월', 전형:'재등록', 반:ban, 등록:b.재등록||E, 환불:b.재등록환불?-(b.재등록환불):E})); }
   // ⑤ 편입(포함) — 반별 편입 수
   for(const ban of bans){ const b=R.perBan[ban]||{};
     out.push(row({구분:'편입(포함)', 전형:'편입', 반:ban, 등록:b.편입||E})); }
@@ -2109,16 +2109,13 @@ document.getElementById('enrollBtn').onclick=async()=>{
     for(const ban of bans){
       const b=R.perBan[ban]; if(!b) continue;
       const c=carry[ban]||{J:'',N:'',R:''};
-      // 반이동 = 신규·퇴소와 동일 취급. 전입은 등록(H/L/P), 전출은 환불(I/M/Q)에 합산
-      const inN=Math.max(0,b.배정남||0), outN=Math.max(0,-(b.배정남||0));
-      const inY=Math.max(0,b.배정여||0), outY=Math.max(0,-(b.배정여||0));
-      const inR=Math.max(0,b.배정등록||0), outR=Math.max(0,-(b.배정등록||0));
+      // 시트에는 센 값만 넣는다. 잔차로 추정한 반이동은 섞지 않음(대시보드 표시와 동일).
       const rec={ban,
-        sinN:(b.신규남||0)+inN, chulN:(b.퇴소남||0)+outN,
-        sinY:(b.신규여||0)+inY, chulY:(b.퇴소여||0)+outY,
-        reReg:(b.재등록||0)+inR, reRef:(b.재등록환불||0)+outR};
+        sinN:b.신규남||0, chulN:b.퇴소남||0,
+        sinY:b.신규여||0, chulY:b.퇴소여||0,
+        reReg:b.재등록||0, reRef:b.재등록환불||0};
       payload.push(rec);
-      rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec, inN,outN,inY,outY,inR,outR});
+      rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec, inN:0,outN:0,inY:0,outY:0,inR:0,outR:0});
     }
     EN={ payload };
     const dash=v=>(v===0||v==null||v==='')?'':v;
@@ -2132,9 +2129,7 @@ document.getElementById('enrollBtn').onclick=async()=>{
         `<td class="mono" style="color:var(--muted)">${dash(r.cN)}</td><td class="mono">${dash(r.sinY)}${mvt(r.inY)}</td><td class="mono">${neg(r.chulY)}${mvt(r.outY)}</td>`+
         `<td class="mono" style="color:var(--muted)">${dash(r.cR)}</td><td class="mono">${dash(r.reReg)}${mvt(r.inR)}</td><td class="mono">${neg(r.reRef)}${mvt(r.outR)}</td></tr>`).join('')+
       `</tbody>`;
-    const mvTot=rows.reduce((a,r)=>a+r.inN+r.inY,0);
-    document.getElementById('enSummary').innerHTML=`반 ${rows.length}개 · 회색=이월(어제 소계→전일등록)`+
-      (mvTot?` · <b style="color:var(--teal-ink)">반이동 ${mvTot}명 포함</b> (전입=등록, 전출=환불)`:` · 반이동 없음`);
+    document.getElementById('enSummary').innerHTML=`반 ${rows.length}개 · 회색=이월(어제 소계→전일등록) · 값은 대시보드와 동일`;
     note.innerHTML='';
     document.getElementById('enPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
   }catch(e){ console.error(e);
@@ -2339,7 +2334,7 @@ function buildResultFromRaw(date, rowsForDate, prevBan){
       b.신규=numOr0(r[RAW_IDX.등록]); b.퇴소=Math.abs(numOr0(r[RAW_IDX.환불]));
       b.신규남=numOr0(r[RAW_IDX.등록남]); b.퇴소남=Math.abs(numOr0(r[RAW_IDX.환불남]));
       b.신규여=numOr0(r[RAW_IDX.등록여]); b.퇴소여=Math.abs(numOr0(r[RAW_IDX.환불여]));
-    } else if(g==='6월'||String(g).includes('재등록')){
+    } else if(/^\d{1,2}월$/.test(String(g).trim())||String(g).includes('재등록')){
       const ban=r[RAW_IDX.반]; if(!ban) continue; const b=ensure(ban);
       b.재등록=numOr0(r[RAW_IDX.등록]); b.재등록환불=Math.abs(numOr0(r[RAW_IDX.환불]));
     } else if(g==='편입'||g==='편입(포함)'){
