@@ -1422,15 +1422,25 @@ async function renderDash(){
 
   // ── 전일값 = 2026정규 시트의 어제 마감 소계 (J=남, N=여, R=등록계) ──
   // 반배정 = 편성계 − 전일 − 신규 + 퇴소. 시트가 기준이라 저장 스냅샷이 필요 없음.
-  R._noPrev = !!(R._roster && !STATE.sheetPrev);
-  if(R._roster && STATE.sheetPrev){
-    const SP=STATE.sheetPrev, num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
+  // 전일값 = 어제 저장본(rawlog)의 반별 편성계·등록계.
+  // 시트(2026정규)는 기입 시점에 따라 C/F 의미가 달라져 기준으로 못 씀.
+  let PREV=null;
+  if(R._roster){
+    const dates=(HIST.dates||[]).filter(d=>d<R.base).sort();
+    const pd=dates[dates.length-1];
+    if(pd && HIST.byDate[pd]){
+      try{ PREV=buildResultFromRaw(pd, HIST.byDate[pd].rows, null).perBan||null; R._prevDate=pd; }catch(e){ PREV=null; }
+    }
+  }
+  R._noPrev = !!(R._roster && !PREV);
+  if(R._roster && PREV){
+    const num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
-      const b=R.perBan[ban], p=SP[ban]; if(!b||!p) continue;
-      b.전일편성   = num(p.C);                    // C열 전일편성 (= G+K)
-      b.전일편성남 = num(p.G);                    // G열 전일등록-남
-      b.전일편성여 = num(p.K);                    // K열 전일등록-여
-      b.전일등록   = num(p.O);                    // O열 전일등록 (R=등록계는 오늘값)
+      const b=R.perBan[ban], p=PREV[ban]; if(!b||!p) continue;
+      b.전일편성   = num(p.편성계);
+      b.전일편성남 = num(p.편성계남!=null?p.편성계남:0);
+      b.전일편성여 = num(p.편성계여!=null?p.편성계여:0);
+      b.전일등록   = num(p.등록계);
       // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소.
       // 화면에는 표시하지 않고(시트에 해당 열이 없음) 개강후 기입에서만 등록·환불 칸에 합산.
       b.배정남 = b.편성계남 - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
@@ -2026,7 +2036,7 @@ document.getElementById('rosterBtn').onclick=async()=>{
       STATE.sheetPrev=m; }
     const n=STATE.rosterData.students.filter(s=>s.sid).length;
     note.innerHTML=`✅ 학생명단 ${n}명 불러옴 — 집계월 정규${CFG.billMonth}월 기준 계산합니다`
-      + (STATE.sheetPrev ? '' : `<br><span style="color:var(--red)">⚠ 2026정규 시트를 못 읽어 전일편성을 표시할 수 없습니다${STATE.reportErr?' — '+STATE.reportErr:''}</span>`);
+      + (STATE.result&&STATE.result._noPrev ? `<br><span style="color:var(--red)">⚠ 어제 저장본이 없어 전일값을 표시할 수 없습니다</span>` : '');
     aggregateRoster();
     switchTab('dash');
   }catch(e){ console.error(e);
