@@ -2415,13 +2415,21 @@ function buildResultFromRaw(date, rowsForDate, prevBan){
 function buildCumulativeResult(date){
   const day=buildResultFromRaw(date, HIST.byDate[date].rows, null);
   const dates=HIST.dates.filter(d=>d<=date);
-  const cumReg={};
+  // 재등록은 매달 새로 받으므로 누적하면 안 됨. raw의 구분('5월' 등)이 바뀌면 리셋.
+  // 안내가 전월 중순에 시작되므로 날짜가 아니라 '구분' 값이 기준.
+  const monOf=rows=>{ for(const r of rows){ const g=String(r[RAW_IDX.구분]||'').trim();
+    if(/^\d{1,2}월$/.test(g)) return g; } return null; };
+  let cumReg={}, curMon=null;
   for(const d of dates){
-    const r=buildResultFromRaw(d, HIST.byDate[d].rows, null);
+    const rows=HIST.byDate[d].rows;
+    const m=monOf(rows);
+    if(m && m!==curMon){ cumReg={}; curMon=m; }   // 대상 월이 바뀌면 초기화
+    const r=buildResultFromRaw(d, rows, null);
     for(const ban in r.perBan){
       cumReg[ban]=(cumReg[ban]||0)+(r.perBan[ban].재등록||0)-(r.perBan[ban].재등록환불||0);
     }
   }
+  day.regMonth=curMon;
   for(const ban in day.perBan){
     const b=day.perBan[ban];
     b.전일편성=b.편성||0;
