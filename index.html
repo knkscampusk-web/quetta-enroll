@@ -334,7 +334,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
         <span><span class="pin"></span> 오늘 신규·퇴소 요약</span>
         <button class="btn" id="reportCopyBtn">한 줄 복사</button>
       </h3>
-      <div class="desc">일자별누적(원장님) 시트에 붙여넣는 한 줄입니다. 등록인원 = 전일등록 + 금일등록 + 금일환불.</div>
+      <div class="desc">일자별누적(원장님) 시트에 붙여넣는 한 줄입니다. 등록인원 = 전일등록 + 금일등록 + 금일환불. <b>복사는 금일등록·금일환불 2칸만</b> (전일등록·등록인원은 시트 수식).</div>
       <div class="tablewrap"><table id="reportTable"></table></div>
       <div class="note" id="reportNote"></div>
     </div>
@@ -404,6 +404,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
         <select id="histDate" disabled><option>설정 탭에서 raw 로그를 먼저 올리세요</option></select>
       </div>
       <button class="btn pri" id="histViewBtn" disabled>이 날짜 현황 보기</button>
+      <button class="btn" id="histReloadBtn" title="다른 사람이 과거 날짜를 수정한 경우에만 사용">전체 새로고침</button>
       <span class="note" id="histNote"></span>
     </div>
   </div>
@@ -1522,6 +1523,8 @@ async function renderDash(){
     `<td class="mono">${금일환불?'-'+금일환불:''}</td>`+
     `<td class="mono"><b>${등록인원}</b></td></tr></tbody>`;
   R._reportRow=[dLabel, 전일등록==null?'':전일등록, 금일등록, 금일환불?(-금일환불):'', 등록인원];
+  // 복사용: 금일등록·금일환불 두 칸만 (전일등록·등록인원은 시트에 수식으로 있음)
+  R._reportCopy=[금일등록, 금일환불?(-금일환불):''];
   document.getElementById('reportNote').textContent =
     전일등록==null ? '전일등록이 없어 등록인원=금일등록−금일환불로 계산됐어요. 매일 현황 저장하면 다음날 전일등록이 이어집니다.' : '';
 
@@ -1669,9 +1672,9 @@ async function verifyInto(R, box){
 async function runVerify(){ return verifyInto(STATE.result, document.getElementById('verifyBox')); }
 document.getElementById('verifyBtn').onclick=runVerify;
 document.getElementById('reportCopyBtn').onclick=()=>{
-  const R=STATE.result; if(!R||!R._reportRow){ toast('먼저 자료를 처리하세요'); return; }
-  navigator.clipboard.writeText(R._reportRow.join('\t'))
-    .then(()=>toast('✅ 원장님 보고 한 줄 복사됨'))
+  const R=STATE.result; if(!R||!R._reportCopy){ toast('먼저 자료를 처리하세요'); return; }
+  navigator.clipboard.writeText(R._reportCopy.join('\t'))
+    .then(()=>toast('✅ 금일등록·금일환불 2칸 복사됨'))
     .catch(()=>toast('복사 실패 — 표에서 직접 복사하세요'));
 };
 
@@ -1787,17 +1790,52 @@ const unpackRows = arr => Array.isArray(arr) ? arr.map(x => typeof x==='string' 
 // 그날 raw 행들을 누적 로그에 저장(덮어쓰기)
 async function saveRawlogDay(date, rows){
   if(!date||!fbReady) return;
-  try{ await setDoc(doc(db,COL('rawlog'),date), { date, rows:packRows(rows), savedAt:Date.now() }); }
-  catch(e){ console.error('rawlog 저장 실패', e); }
+  try{ await setDoc(doc(db,COL('rawlog'),date), { date, rows:packRows(rows), savedAt:Date.now() });
+    HIST.byDate=HIST.byDate||{}; HIST.byDate[date]={rows, writer:''};
+    HIST.dates=Object.keys(HIST.byDate).sort();
+    _rlcSave(HIST.byDate, _dstr(new Date()));
+  }catch(e){ console.error('rawlog 저장 실패', e); }
 }
 // 전체 누적 로그 읽어 HIST 구성
-async function loadRawlogAll(){
+// Firestore 읽기 절약: 확정된 과거 날짜는 localStorage 캐시에서, 최근 며칠만 새로 조회.
+// (저장은 그대로 Firestore → 팀 공유 유지)
+const RLC=()=>LK('rawlogcache');
+function _rlcLoad(){ try{ const j=JSON.parse(localStorage.getItem(RLC())||'null');
+  return (j&&j.byDate)?j:null; }catch(e){ return null; } }
+function _rlcSave(byDate, through){ try{
+  localStorage.setItem(RLC(), JSON.stringify({byDate, through})); }catch(e){} }
+function _dstr(d){ return d.toISOString().slice(0,10); }
+
+async function loadRawlogAll(force){
   if(!fbReady) return false;
+  const cache=force?null:_rlcLoad();
   try{
-    const snap=await getDocs(collection(db,COL('rawlog')));
-    const byDate={};
-    snap.forEach(d=>{ const v=d.data(); if(v&&Array.isArray(v.rows)) byDate[v.date||d.id]={rows:unpackRows(v.rows), writer:''}; });
-    if(Object.keys(byDate).length){ HIST.byDate=byDate; HIST.dates=Object.keys(byDate).sort(); refreshHistUI(); return true; }
+    let byDate;
+    if(cache){
+      byDate=cache.byDate;
+      // 캐시 이후 날짜 + 최근 2일(변경 가능)만 개별 조회
+      const today=new Date(); const need=[];
+      let cur=new Date((cache.through||_dstr(today))+'T00:00:00');
+      for(let i=0;i<45 && cur<=today;i++){ need.push(_dstr(cur)); cur.setDate(cur.getDate()+1); }
+      const y=new Date(today); y.setDate(y.getDate()-1);
+      [_dstr(y), _dstr(today)].forEach(d=>{ if(need.indexOf(d)<0) need.push(d); });
+      for(const d of need){
+        try{ const sn=await getDoc(doc(db,COL('rawlog'),d));
+          if(sn.exists()){ const v=sn.data();
+            if(v&&Array.isArray(v.rows)) byDate[d]={rows:unpackRows(v.rows), writer:''}; }
+        }catch(e){}
+      }
+    } else {
+      // 캐시 없음 → 최초 1회 전량 조회
+      const snap=await getDocs(collection(db,COL('rawlog')));
+      byDate={};
+      snap.forEach(d=>{ const v=d.data(); if(v&&Array.isArray(v.rows)) byDate[v.date||d.id]={rows:unpackRows(v.rows), writer:''}; });
+    }
+    if(Object.keys(byDate).length){
+      HIST.byDate=byDate; HIST.dates=Object.keys(byDate).sort();
+      _rlcSave(byDate, _dstr(new Date()));
+      refreshHistUI(); return true;
+    }
   }catch(e){ console.error('rawlog 로드 실패', e); }
   return false;
 }
@@ -2505,7 +2543,11 @@ function renderHist(R){
 (async function(){
   await initFirebase();
   await loadCfg();
-  await loadRawlogAll();   // 누적 raw 로그 자동 복원 (지난 등록 보기)
+  await loadRawlogAll();   // 누적 raw 로그 자동 복원 (지난 등록 보기) — 캐시 우선
+  const _hr=document.getElementById('histReloadBtn');
+  if(_hr) _hr.onclick=async()=>{ _hr.disabled=true; _hr.textContent='불러오는 중…';
+    try{ await loadRawlogAll(true); toast('✅ 전체 새로고침 완료'); }
+    finally{ _hr.disabled=false; _hr.textContent='전체 새로고침'; } };
   updateSplitTag();
   // 이미 이번 세션에 들어왔다면 게이트 패스
   if(sessionStorage.getItem(LK('in'))==='1') openApp();
