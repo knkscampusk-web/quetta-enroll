@@ -1486,7 +1486,10 @@ async function renderDash(){
   document.getElementById('heroOut').textContent=T.퇴소;
   document.getElementById('heroSub').innerHTML=
     (R._historical?`<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거</span> `:``)+
-    `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`;
+    `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`
+    + (R._roster ? (R._prevDate
+        ? ` · <span style="${_isYday(R._prevDate,R.base)?'':'color:var(--red);font-weight:700'}">전일값 기준 ${R._prevDate.slice(5).replace('-','/')}</span>`
+        : ` · <span style="color:var(--red);font-weight:700">전일값 없음</span>`) : '');
   const _live0 = !R._historical && !R._cumulative && !R._roster;
   document.getElementById('heroMini').innerHTML=
     `<div class="hp">총인원<b>${T.편성계}</b></div>`+
@@ -1741,6 +1744,12 @@ if(_xlsxBtn) _xlsxBtn.onclick=()=>{
  * 7) 공유 저장 / 전일
  * =================================================================== */
 const dayKey=(d,s)=> `${d}_${s}`;
+// 전일값 기준일이 실제 '어제'인지 (아니면 저장을 건너뛴 날이 있다는 뜻)
+function _isYday(prev, base){
+  if(!prev||!base) return false;
+  const t=new Date(base); t.setDate(t.getDate()-1);
+  return t.toISOString().slice(0,10)===prev;
+}
 function prevDateKey(d,s,back){ if(!d) return ''; const t=new Date(d); t.setDate(t.getDate()-(back||1)); return dayKey(t.toISOString().slice(0,10),s); }
 
 async function saveDaily(){
