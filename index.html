@@ -793,7 +793,7 @@ function openApp(){ document.getElementById('gate').style.display='none'; docume
 function switchTab(name){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
-  if(name==='analysis'){ (async()=>{ if(!Object.keys(AN.series).length) await loadAnalysisAll(); drawAnalysis(); })(); }
+  if(name==='analysis'){ (async()=>{ if(!Object.keys(AN.series).length) await loadAnalysisAll(); seriesFromRawlog(); drawAnalysis(); })(); }
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 document.getElementById('settingsFab').onclick=()=>switchTab('set');
@@ -957,6 +957,27 @@ async function saveMemos(){
   try{ await setDoc(doc(db,COL('analysis'),'_memos'),{list:AN.memos||[],savedAt:Date.now()}); }catch(e){ console.error(e); }
 }
 // 올해 원장님 보고 한 점 자동 축적 (현황 저장 시 호출)
+// 올해 시계열은 rawlog(지난 등록 보기 데이터)에서 그때그때 산출한다.
+// 별도 저장·업로드 불필요. 작년은 CSV 업로드분(analysis 컬렉션)을 그대로 사용.
+function seriesFromRawlog(){
+  const dates=(HIST&&HIST.dates)||[];
+  if(!dates.length) return;
+  const byYear={};
+  for(const d of dates){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || !HIST.byDate[d]) continue;
+    let r=null; try{ r=buildCumulativeResult(d); }catch(e){ continue; }
+    if(!r||!r.perBan) continue;
+    const S=f=>Object.values(r.perBan).reduce((a,b)=>a+(b[f]||0),0);
+    const yr=d.slice(0,4), mo=+d.slice(5,7), dy=+d.slice(8,10);
+    (byYear[yr]=byYear[yr]||[]).push({mo,dy,
+      금일등록:S('신규'), 금일환불:-S('퇴소'), 등록인원:S('편성계')});
+  }
+  for(const yr in byYear){
+    const arr=byYear[yr].sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
+    let cr=0,cf=0; arr.forEach((o,i)=>{ o.idx=i; cr+=o.금일등록||0; cf+=o.금일환불||0; o.cumReg=cr; o.cumRef=cf; });
+    AN.series[yr]=arr;   // rawlog가 있는 연도는 이쪽이 우선
+  }
+}
 async function accumulateAnalysisPoint(R){
   if(!fbReady||!R||!R._reportRow) return;
   const yr=String(new Date(R.base+'T00:00:00').getFullYear());
