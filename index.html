@@ -458,6 +458,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <input type="text" id="memoText" placeholder="이벤트 내용 (예: 경쟁업체 개강)" style="flex:1;min-width:200px">
       <button class="btn pri" id="memoAddBtn">메모 추가</button>
     </div>
+    <div class="note" id="memoNote" style="margin-top:6px"></div>
     <div id="memoList" style="margin-top:12px"></div>
   </div>
 </section>
@@ -1024,9 +1025,8 @@ function ddayToDate(year, dd){ // D-day → 'M/D'
 function eventGroups(){
   const g={};
   for(const m of (AN.memos||[])){
-    const d=String(m.date||m.d||''), t=String(m.text||m.t||m.내용||'').trim();
-    const mm=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(!mm||!t) continue;
-    (g[t]=g[t]||{name:t, by:{}}).by[mm[1]]={mo:+mm[2], dy:+mm[3]};
+    const t=String(m.text||'').trim(); if(!t||!m.year||!m.mo||!m.dy) continue;
+    (g[t]=g[t]||{name:t, by:{}}).by[String(m.year)]={mo:+m.mo, dy:+m.dy};
   }
   return Object.values(g).sort((a,b)=>a.name.localeCompare(b.name));
 }
