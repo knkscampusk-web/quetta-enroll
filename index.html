@@ -915,7 +915,10 @@ async function loadReportFile(file){
     document.getElementById('anEvtWrap').style.display = ax==='evt'?'':'none';
     document.getElementById('anRangeWrap').style.display = ax==='evt'?'none':'';
     if(ax==='evt') refreshEventOptions();
-    drawAnalysis(); if(document.getElementById('anDdayIn').value) showDdayLookup();
+    if(id==='anRange'||id==='anAxis'){ AN.focusDD=null;
+      const di=document.getElementById('anDdayIn'); if(di) di.value='';
+      const dout=document.getElementById('anDdayOut'); if(dout) dout.innerHTML=''; }
+    drawAnalysis();
   };});
   const _db=document.getElementById('anDdayBtn'); if(_db) _db.onclick=showDdayLookup;
   const _di=document.getElementById('anDdayIn'); if(_di) _di.onkeydown=e=>{ if(e.key==='Enter') showDdayLookup(); };
@@ -991,7 +994,9 @@ function seriesFromRawlog(){
     const pop=S('편성계');
     if(!pop) continue;   // 값 없는 날은 점을 만들지 않는다 (선이 바닥으로 꽂히는 것 방지)
     (byYear[yr]=byYear[yr]||[]).push({mo,dy,
-      금일등록:S('신규'), 금일환불:-S('퇴소'), 등록인원:pop});
+      금일등록:S('편입'),        // 원장님 보고와 동일 기준(편입)
+      금일환불:-S('퇴소'),
+      등록인원:pop});           // 인원은 편성 기준
   }
   for(const yr in byYear){
     const arr=byYear[yr].sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
@@ -1042,7 +1047,13 @@ function refreshEventOptions(){
 function showDdayLookup(){
   const out=document.getElementById('anDdayOut'); if(!out) return;
   const n=parseInt(document.getElementById('anDdayIn').value);
-  if(isNaN(n)){ out.innerHTML=''; return; }
+  if(isNaN(n)){ out.innerHTML=''; AN.focusDD=null; drawAnalysis(); return; }
+  AN.focusDD=n;                      // 그래프도 이 지점 중심으로 이동
+  const ax=document.getElementById('anAxis');
+  if(ax.value!=='dday'){ ax.value='dday';
+    document.getElementById('anEvtWrap').style.display='none';
+    document.getElementById('anRangeWrap').style.display=''; }
+  drawAnalysis();
   const metric=document.getElementById('anMetric').value;
   const years=Object.keys(AN.series).sort();
   const rows=years.map(y=>{
@@ -1089,7 +1100,8 @@ function drawAnalysis(){
       d=d.map(o=>({...o, ed:toDays(o.mo,o.dy)})).filter(o=>o.ed>=-30&&o.ed<=30);
       return { year:y, pts:d.map(o=>({ x:o.ed, y:o[metric]||0, mo:o.mo, dy:o.dy, dd:o.dd, ed:o.ed })) };
     }
-    if(range>0 && todayDD!=null){ const lo=todayDD-range*31; d=d.filter(o=>o.dd!=null && o.dd>=lo && o.dd<=todayDD+3); }
+    if(AN.focusDD!=null){ const f=AN.focusDD; d=d.filter(o=>o.dd!=null && o.dd>=f-45 && o.dd<=f+45); }
+    else if(range>0 && todayDD!=null){ const lo=todayDD-range*31; d=d.filter(o=>o.dd!=null && o.dd>=lo && o.dd<=todayDD+3); }
     return { year:y, pts:d.map(o=>({ x: axis==='dday'?(o.dd??o.idx) : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy, dd:o.dd })) };
   });
   const allX=series.flatMap(s=>s.pts.map(p=>p.x));
@@ -1111,10 +1123,15 @@ function drawAnalysis(){
   for(let i=0;i<=xticks;i++){ const xv=Math.round(minX+(maxX-minX)*i/xticks); const xx=sx(xv);
     let l1,l2='';
     if(axis==='dday'){ l1=(xv>=0?'D+':'D')+xv; l2=ddayToDate(curYear,xv); }
+    else if(axis==='evt'){ l1=(xv>0?'E+':(xv<0?'E':'E'))+xv; if(xv===0) l1='이벤트일'; }
     else { l1=`${Math.floor(xv/100)}/${String(Math.abs(xv%100)).padStart(2,'0')}`; }
     xg.push(`<text x="${xx}" y="${Hh-pad.b+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${l1}</text>`+
       (l2?`<text x="${xx}" y="${Hh-pad.b+32}" text-anchor="middle" font-size="10" fill="var(--muted)" opacity=".8">${l2}</text>`:'')); }
-  const xLabel=`<text x="${(pad.l+W-pad.r)/2}" y="${Hh-6}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700">${axis==='dday'?'개강 D-day (개강일=D0)':'달력 날짜'}</text>`;
+  const xLabel=`<text x="${(pad.l+W-pad.r)/2}" y="${Hh-6}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700">${axis==='dday'?'개강 D-day (개강일=D0)':(axis==='evt'?(EVT?EVT.name+' 기준 전후 30일 (이벤트일=0)':'이벤트 기준'):'달력 날짜')}</text>`;
+  const focusLine = (axis==='dday'&&AN.focusDD!=null&&AN.focusDD>=minX&&AN.focusDD<=maxX)
+    ? `<line x1="${sx(AN.focusDD)}" y1="${pad.t}" x2="${sx(AN.focusDD)}" y2="${Hh-pad.b}" stroke="#e08a2e" stroke-width="1.5" stroke-dasharray="5 4"/>`
+      + `<text x="${sx(AN.focusDD)}" y="${pad.t-6}" text-anchor="middle" font-size="11" fill="#e08a2e" font-weight="700">D+${AN.focusDD}</text>`
+    : '';
   const zero = minY<0&&maxY>0 ? `<line x1="${pad.l}" y1="${sy(0)}" x2="${W-pad.r}" y2="${sy(0)}" stroke="var(--ink)" stroke-width="1" opacity=".25"/>`:'';
   const paths=series.map(s=>{ const col=AN_COLORS[s.year]||'#888';
     const dpath=s.pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
@@ -1143,7 +1160,7 @@ function drawAnalysis(){
     memoMarks+=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--peri)" stroke-width="1" stroke-dasharray="2 2" opacity=".6"/>`+
       `<circle cx="${xx}" cy="${pad.t+4}" r="4" fill="var(--peri)"><title>${m.mo}/${m.dy} ${m.text}</title></circle>`;
   }
-  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${yLabel}${xg.join('')}${xLabel}${zero}${memoMarks}${todayLine}${paths}</svg>`;
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${yLabel}${xg.join('')}${xLabel}${zero}${memoMarks}${todayLine}${focusLine}${paths}</svg>`;
   document.getElementById('anCompare').innerHTML=compareHtml;
   document.getElementById('anLegend').innerHTML='범례: '+series.map(s=>`<span style="color:${AN_COLORS[s.year]||'#888'};font-weight:700">● ${s.year}</span>`).join('  ')+
     (axis==='dday'?` · 개강일 D0 (2025 2/16 · 2026 2/19) · 보라 점선=이벤트 메모`:' · 달력 날짜');
