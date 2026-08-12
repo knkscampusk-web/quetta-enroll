@@ -1542,7 +1542,8 @@ async function renderDash(){
     const dates=(HIST.dates||[]).filter(d=>d<R.base).sort();
     const pd=dates[dates.length-1];
     if(pd && HIST.byDate[pd]){
-      try{ PREV=buildResultFromRaw(pd, HIST.byDate[pd].rows, null).perBan||null; R._prevDate=pd; }catch(e){ PREV=null; }
+      // 편성계·등록계는 buildCumulativeResult에서만 산출됨 (buildResultFromRaw엔 없음)
+      try{ PREV=buildCumulativeResult(pd).perBan||null; R._prevDate=pd; }catch(e){ PREV=null; }
     }
   }
   R._noPrev = !!(R._roster && !PREV);
@@ -1677,8 +1678,8 @@ async function renderDash(){
     const b=R.perBan[ban]; if(!b) continue;
     r1.push(`<tr><td>${ban}</td>
       <td class="mono">${R._noPrev?'–':b.전일편성}</td>
-      <td class="mono">${b.신규||''}</td>
-      <td class="mono">${b.퇴소?'-'+b.퇴소:''}</td>
+      <td class="mono">${((b.신규||0)+Math.max(0,b.배정||0))||''}</td>
+      <td class="mono">${((b.퇴소||0)+Math.max(0,-(b.배정||0)))?'-'+((b.퇴소||0)+Math.max(0,-(b.배정||0))):''}</td>
       <td class="mono"><b>${b.편성계}</b></td>
       <td class="mono">${b.신규남||''}</td><td class="mono">${b.퇴소남?'-'+b.퇴소남:''}</td>
       <td class="mono">${b.신규여||''}</td><td class="mono">${b.퇴소여?'-'+b.퇴소여:''}</td></tr>`);
@@ -1688,7 +1689,7 @@ async function renderDash(){
   const mvIn=sumP('배정'), mvOut=sumN('배정');
   const mvInN=sumP('배정남'), mvOutN=sumN('배정남'), mvInY=sumP('배정여'), mvOutY=sumN('배정여');
   r1.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${R._noPrev?'–':T.전일편성}</td><td class="mono">${T.신규}</td><td class="mono">${T.퇴소?'-'+T.퇴소:'0'}</td><td class="mono"><b>${T.편성계}</b></td>
+    <td class="mono">${R._noPrev?'–':T.전일편성}</td><td class="mono">${T.신규+mvIn}</td><td class="mono">${(T.퇴소+mvOut)?'-'+(T.퇴소+mvOut):'0'}</td><td class="mono"><b>${T.편성계}</b></td>
     <td class="mono">${T.신규남}</td><td class="mono">${T.퇴소남?'-'+T.퇴소남:'0'}</td>
     <td class="mono">${T.신규여}</td><td class="mono">${T.퇴소여?'-'+T.퇴소여:'0'}</td></tr>`);
   document.getElementById('dashTable').innerHTML=
@@ -1701,8 +1702,8 @@ async function renderDash(){
     const b=R.perBan[ban]; if(!b) continue;
     r2.push(`<tr><td>${ban}</td>
       <td class="mono">${isLive?'':(R._noPrev?'–':b.전일등록)}</td>
-      <td class="mono">${b.재등록||''}</td>
-      <td class="mono">${b.재등록환불?'-'+b.재등록환불:''}</td>
+      <td class="mono">${((b.재등록||0)+Math.max(0,b.배정등록||0))||''}</td>
+      <td class="mono">${((b.재등록환불||0)+Math.max(0,-(b.배정등록||0)))?'-'+((b.재등록환불||0)+Math.max(0,-(b.배정등록||0))):''}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
       <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
   }
@@ -1711,7 +1712,7 @@ async function renderDash(){
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
   const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
   r2.push(`<tr class="tot"><td>소계</td>
-    <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록}</td><td class="mono">${T.재등록환불?'-'+T.재등록환불:'0'}</td><td class="mono">${soRegTot}</td>
+    <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${soUnpaid}</td></tr>`);
   const t2=document.getElementById('dashTable2');
   if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
@@ -2279,10 +2280,13 @@ document.getElementById('enrollBtn').onclick=async()=>{
       const b=R.perBan[ban]; if(!b) continue;
       const c=carry[ban]||{J:'',N:'',R:''};
       // 시트에는 센 값만 넣는다. 잔차로 추정한 반이동은 섞지 않음(대시보드 표시와 동일).
+      const inN=Math.max(0,b.배정남||0), outN=Math.max(0,-(b.배정남||0));
+      const inY=Math.max(0,b.배정여||0), outY=Math.max(0,-(b.배정여||0));
+      const inR=Math.max(0,b.배정등록||0), outR=Math.max(0,-(b.배정등록||0));
       const rec={ban,
-        sinN:b.신규남||0, chulN:b.퇴소남||0,
-        sinY:b.신규여||0, chulY:b.퇴소여||0,
-        reReg:b.재등록||0, reRef:b.재등록환불||0};
+        sinN:(b.신규남||0)+inN, chulN:(b.퇴소남||0)+outN,
+        sinY:(b.신규여||0)+inY, chulY:(b.퇴소여||0)+outY,
+        reReg:(b.재등록||0)+inR, reRef:(b.재등록환불||0)+outR};
       payload.push(rec);
       rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec, inN:0,outN:0,inY:0,outY:0,inR:0,outR:0});
     }
