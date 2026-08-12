@@ -1550,16 +1550,19 @@ async function renderDash(){
   if(R._roster && PREV){
     const num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
     for(const ban of [...R.banList,'미배정']){
-      const b=R.perBan[ban], p=PREV[ban]; if(!b||!p) continue;
-      b.전일편성   = num(p.편성계);
+      const b=R.perBan[ban]; if(!b) continue;
+      // 반 키가 안 맞거나 편성계 필드가 없을 수 있어 폴백까지 둔다
+      const p=PREV[ban]||PREV[String(ban).trim()]||{};
+      const pPy = p.편성계!=null ? p.편성계 : ((p.편성||0)+(p.신규||0)-(p.퇴소||0));
+      const pRg = p.등록계!=null ? p.등록계 : ((p.전일등록||0)+(p.재등록||0)-(p.재등록환불||0));
+      b.전일편성   = num(pPy);
       b.전일편성남 = num(p.편성계남!=null?p.편성계남:0);
       b.전일편성여 = num(p.편성계여!=null?p.편성계여:0);
-      b.전일등록   = num(p.등록계);
-      // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소.
-      // 화면에는 표시하지 않고(시트에 해당 열이 없음) 개강후 기입에서만 등록·환불 칸에 합산.
+      b.전일등록   = num(pRg);
+      // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
+      b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
       b.배정남 = b.편성계남 - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
       b.배정여 = b.편성계여 - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
-      b.배정   = b.배정남 + b.배정여;
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
   }
