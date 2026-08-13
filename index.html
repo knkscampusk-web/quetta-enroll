@@ -900,7 +900,44 @@ async function loadReportFile(file){
   const yr=p.year||('파일'+Object.keys(AN.series).length);
   AN.series[yr]=p.data;
   AN.lastDiag = p.diag ? {file:file.name, year:yr, ...p.diag} : null;
+  if(isRaw) AN.lastImport = await importRawIntoRawlog(rows, hi);   // rawlog까지 덮어쓰기
   return yr;
+}
+
+// 올린 raw CSV를 날짜별로 쪼개 quettaReg_rawlog/{날짜}에 그대로 덮어쓴다.
+// 지난 등록 보기·전일값이 읽는 곳이 rawlog라, 여기에 넣어야 CSV가 실제로 반영됨.
+async function importRawIntoRawlog(rows, hi){
+  try{
+    const H={}; rows[hi].forEach((h,i)=>{ const k=String(h).trim(); if(k&&H[k]==null) H[k]=i; });
+    if(H['날짜']==null || H['구분']==null) return {ok:0, msg:'날짜/구분 열 없음'};
+    const byDate={};
+    for(const r of rows.slice(hi+1)){
+      const draw=String(r[H['날짜']]||'').trim(); if(!draw) continue;
+      const m=draw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+      if(!m) continue;
+      const key=`${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+      const obj={};
+      RAW_COLS.forEach(c=>{ const i=H[c]; obj[c] = (i==null||r[i]==null||r[i]==='') ? '' : r[i]; });
+      obj['날짜']=key;
+      (byDate[key]=byDate[key]||[]).push(RAW_COLS.map(c=>obj[c]));
+    }
+    const dates=Object.keys(byDate).sort();
+    if(!dates.length) return {ok:0, msg:'날짜 인식 0건'};
+    HIST.byDate=HIST.byDate||{};
+    if(fbReady){
+      let batch=writeBatch(db), n=0;
+      for(const d of dates){
+        batch.set(doc(db,COL('rawlog'),d), { date:d, rows:packRows(byDate[d]), savedAt:Date.now() });
+        if(++n%400===0){ await batch.commit(); batch=writeBatch(db); }
+      }
+      await batch.commit();
+    }
+    for(const d of dates) HIST.byDate[d]={rows:byDate[d], writer:''};   // 덮어쓰기
+    HIST.dates=Object.keys(HIST.byDate).sort();
+    try{ _rlcSave(HIST.byDate, _dstr(new Date())); }catch(e){}
+    refreshHistUI();
+    return {ok:dates.length, from:dates[0], to:dates[dates.length-1]};
+  }catch(e){ console.error('rawlog 반영 실패', e); return {ok:0, msg:(e.code||e.message||String(e))}; }
 }
 (function wireAnalysis(){
   const drop=document.getElementById('dropRep'), inp=document.getElementById('fileRep');
@@ -927,6 +964,10 @@ async function loadReportFile(file){
     for(const f of files){ const yr=await loadReportFile(f); if(yr){ names.push(yr); await saveAnalysisYear(yr, AN.series[yr]); } }
     const el=document.getElementById('repNames');
     let html=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
+    const imp=AN.lastImport;
+    if(imp) html += imp.ok
+      ? `<br><span style="color:var(--teal-ink)">지난 등록 보기에 ${imp.ok}일치 반영 (${imp.from} ~ ${imp.to})</span>`
+      : `<br><span style="color:var(--red)">⚠ 지난 등록 보기 반영 실패 — ${imp.msg||''}</span>`;
     const d=AN.lastDiag;
     if(d) html+=`<div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6">`+
       `진단 · ${d.file} → ${d.year}년 / 날짜열 idx=${d.날짜열} / 날짜있는행 ${d.행수} → 인식 ${d.인식} / 날짜키 ${d.날짜키}개<br>`+
