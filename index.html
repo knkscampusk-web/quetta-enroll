@@ -1584,7 +1584,12 @@ async function renderDash(){
     const pd=dates[dates.length-1];
     if(pd && HIST.byDate[pd]){
       // 편성계·등록계는 buildCumulativeResult에서만 산출됨 (buildResultFromRaw엔 없음)
-      try{ PREV=buildCumulativeResult(pd).perBan||null; R._prevDate=pd; }catch(e){ PREV=null; }
+      try{ PREV=buildCumulativeResult(pd).perBan||null; R._prevDate=pd; }catch(e){ PREV=null; R._prevErr=(e.message||String(e)); }
+      // [임시 진단] 확인 후 제거
+      try{ const u=(PREV&&(PREV['미배정']))||null;
+        R._dbg = u ? `PREV(${pd}) 미배정 → 편성계=${u.편성계} 편성=${u.편성} 신규=${u.신규} 퇴소=${u.퇴소} | 키=${Object.keys(PREV).join(',')}`
+                   : `PREV(${pd}) 미배정 없음 | 키=${PREV?Object.keys(PREV).join(','):'PREV=null'}${R._prevErr?' | err='+R._prevErr:''}`;
+      }catch(e){ R._dbg='dbg 실패 '+e.message; }
     }
   }
   R._noPrev = !!(R._roster && !PREV);
@@ -1645,6 +1650,7 @@ async function renderDash(){
   document.getElementById('heroSub').innerHTML=
     (R._historical?`<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거</span> `:``)+
     `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`
+    + (R._dbg?`<br><span style="color:#c2410c;font-size:11px">[임시] ${R._dbg}</span>`:'')
     + (R._roster ? (R._prevDate
         ? ` · <span style="${_isYday(R._prevDate,R.base)?'':'color:var(--red);font-weight:700'}">전일값 기준 ${R._prevDate.slice(5).replace('-','/')}</span>`
         : ` · <span style="color:var(--red);font-weight:700">전일값 없음</span>`) : '');
