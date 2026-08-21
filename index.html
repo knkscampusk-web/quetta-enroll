@@ -1370,6 +1370,9 @@ function aggregateRoster(){
   const Dmd=dateToMd(base);
   const currCol=R.monthCol(N), prevCol=R.monthCol(N-1);
   if(currCol<0){ toast(`학생명단에 '정규${N}월' 열이 없어요`); return; }
+  // 집계월이 '다음 달'이면 이번 달 칸도 같이 본다 (예: 8/21에 집계월 9월이면 정규8월 신규도 잡아야 함)
+  const thisMon = base ? (parseInt(base.slice(5,7))||0) : 0;
+  const thisCol = (thisMon && thisMon!==N) ? R.monthCol(thisMon) : -1;
 
   const zero=()=>({편성:0,신규:0,신규남:0,신규여:0,퇴소:0,퇴소남:0,퇴소여:0,
     재등록:0,재등록남:0,재등록여:0,재등록환불:0,재등록환불남:0,재등록환불여:0,
@@ -1392,7 +1395,13 @@ function aggregateRoster(){
     const b=pb(real?st.ban:'미배정'); const sex=st.sex;
     assignMap[st.sid]=real?st.ban:'미배정';
     sexMap[st.sid]=sex;
-    const curr=mdNum(st._row[currCol]);        // 당월 재등록일
+    let curr=mdNum(st._row[currCol]);          // 집계월 재등록일
+    // 집계월이 다음 달일 때, 이번 달 칸에 오늘 등록이 있으면 그것도 인정
+    let currIsThis=false;
+    if(thisCol>=0){
+      const c2=mdNum(st._row[thisCol]);
+      if(c2!=null && (curr==null || c2>curr)){ curr=c2; currIsThis=true; }
+    }
     if(curr!=null) regMap[st.sid]=curr;
     const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
     const out=st.out;                          // 퇴소일
@@ -1410,7 +1419,7 @@ function aggregateRoster(){
     if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++;
       // 금일 신규(편입) = 당월 등록 & 전월 없음
       // 신규 = 전월 등록 없음 OR '신규입소예정자' 블록 소속
-      if(prev==null || st._newBlock){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
+      if(prev==null || currIsThis || st._newBlock){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
       if(st.jang){ const L=jangCodeToLabel(st.jang); if(L) b.장학등록++; }
     }
   }
