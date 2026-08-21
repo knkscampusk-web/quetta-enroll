@@ -1339,14 +1339,21 @@ function parseRoster(rows){
   const idx={ ban:find(['반']), sex:find(['성별']), name:find(['성명','이름']),
     sid:find(['수험번호']), jh:find(['전형방법']), gye:find(['계열']),
     jang:find(['장학대상']), inDate:find(['입소일']), outDate:find(['퇴소일']) };
-  const students=rows.slice(1).map(r=>({
+  // '신규입소예정자' 안내 행 아래는 신규 블록. 행번호 고정 대신 표식으로 탐색.
+  let newFrom=-1;
+  for(let i=1;i<rows.length;i++){
+    const joined=norm((rows[i]||[]).join(''));
+    if(joined.includes('신규입소예정자')){ newFrom=i; break; }
+  }
+  const students=rows.slice(1).map((r,i)=>({
     ban:String(r[idx.ban]||'').trim(), sex:String(r[idx.sex]||'').trim(),
     name:String(r[idx.name]||'').trim(), sid:norm(r[idx.sid]||''),
     jh:String(r[idx.jh]||'').trim(), gye:String(r[idx.gye]||'').trim(),
     jang:String(r[idx.jang]||'').trim(),
-    out:mdNum(r[idx.outDate]), _row:r
+    out:mdNum(r[idx.outDate]), _row:r,
+    _newBlock: (newFrom>=0 && (i+1)>newFrom)      // 신규 블록 여부
   }));
-  return { hdr, monthCol, students };
+  return { hdr, monthCol, students, newFrom };
 }
 // billMonth(N) 기준 집계: 절대값(as of date). carry 불필요
 function aggregateRoster(){
@@ -1402,7 +1409,8 @@ function aggregateRoster(){
     // 금일 재등록
     if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++;
       // 금일 신규(편입) = 당월 등록 & 전월 없음
-      if(prev==null){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
+      // 신규 = 전월 등록 없음 OR '신규입소예정자' 블록 소속
+      if(prev==null || st._newBlock){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
       if(st.jang){ const L=jangCodeToLabel(st.jang); if(L) b.장학등록++; }
     }
   }
@@ -1607,15 +1615,8 @@ async function renderDash(){
       b.전일등록   = num(pRg);
       // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
       b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
-      // raw에 성별 편성계가 없어 전일편성남/여를 못 씀 →
-      // 총 배정을 오늘 성별 구성비로 쪼개 배분 (남+여 = 배정 보장)
-      const gTot=(b.편성계남||0)+(b.편성계여||0);
-      if(!b.배정 || !gTot){ b.배정남=0; b.배정여=0; }
-      else {
-        const sgn=b.배정<0?-1:1, mag=Math.abs(b.배정);
-        const mN=Math.round(mag*(b.편성계남||0)/gTot);
-        b.배정남=sgn*mN; b.배정여=sgn*(mag-mN);
-      }
+      // 성별 이동은 근거가 없으면 추정하지 않는다. 신규는 명단에서 성별까지 직접 세므로 그대로 씀.
+      b.배정남=0; b.배정여=0;
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
   }
