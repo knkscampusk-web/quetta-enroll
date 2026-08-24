@@ -1401,13 +1401,10 @@ function aggregateRoster(){
     const b=pb(real?st.ban:'미배정'); const sex=st.sex;
     assignMap[st.sid]=real?st.ban:'미배정';
     sexMap[st.sid]=sex;
-    let curr=mdNum(st._row[currCol]);          // 집계월 재등록일
-    // 집계월이 다음 달일 때, 이번 달 칸에 오늘 등록이 있으면 그것도 인정
-    let currIsThis=false;
-    if(thisCol>=0){
-      const c2=mdNum(st._row[thisCol]);
-      if(c2!=null && (curr==null || c2>curr)){ curr=c2; currIsThis=true; }
-    }
+    const curr=mdNum(st._row[currCol]);        // 집계월 재등록일 — 재등록·등록계는 이 값만 사용
+    // 집계월이 다음 달일 때, 이번 달 칸의 오늘 등록은 '신규 판정에만' 인정 (등록계 오염 방지)
+    const currThis = (thisCol>=0)? mdNum(st._row[thisCol]) : null;
+    const currIsThis = (currThis===Dmd && curr!==Dmd);
     if(curr!=null) regMap[st.sid]=curr;
     const prev=prevCol>=0? mdNum(st._row[prevCol]) : null; // 전월
     const out=st.out;                          // 퇴소일
@@ -1422,7 +1419,8 @@ function aggregateRoster(){
     // 미납: 전월 등록 & 당월 미등록(≤D) & 미퇴소(≤D)
     if(prev!=null && !currByD && !outByD) b.미납++;
     // 금일 재등록
-    if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++;
+    if(curr===Dmd || currIsThis){
+      if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++; }
       // 금일 신규(편입) = 당월 등록 & 전월 없음
       // 신규 = 전월 등록 없음 OR '신규입소예정자' 블록 소속
       if(prev==null || currIsThis || st._newBlock){ b.신규++; b.편입++; if(sex==='남') b.신규남++; else if(sex==='여') b.신규여++; }
