@@ -1389,6 +1389,12 @@ function aggregateRoster(){
 
   for(const st of R.students){
     if(!/^\d{4,}$/.test(String(st.sid))) continue;   // 숫자 수험번호만(헤더·안내문 등 잡동사니 제외)
+    // 신규입소예정자 블록: 집계월·전월 두 칸 다 비어 있으면 아직 등록이 아니므로 편성현황에서 제외
+    if(st._newBlock){
+      const c1=mdNum(st._row[currCol]);
+      const c0=(prevCol>=0)? mdNum(st._row[prevCol]) : null;
+      if(c1==null && c0==null) continue;
+    }
     const real=isReal(st.ban), unassigned=!String(st.ban).trim();
     if(!real && !unassigned) continue;               // A~S도 빈칸도 아닌 반 → 제외
     if(unassigned && !hasAnyReg(st)) continue;        // 미배정인데 등록일도 없음 = 아직 미등록 → 제외
