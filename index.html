@@ -1597,7 +1597,9 @@ async function renderDash(){
   // 시트(2026정규)는 기입 시점에 따라 C/F 의미가 달라져 기준으로 못 씀.
   let PREV=null;
   if(R._roster){
-    const dates=(HIST.dates||[]).filter(d=>d<R.base).sort();
+    // HIST.dates가 갱신 안 됐을 수 있어 byDate 키에서 직접 고른다
+    const all=Object.keys(HIST.byDate||{});
+    const dates=all.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d) && d<R.base).sort();
     const pd=dates[dates.length-1];
     if(pd && HIST.byDate[pd]){
       // 편성계·등록계는 buildCumulativeResult에서만 산출됨 (buildResultFromRaw엔 없음)
