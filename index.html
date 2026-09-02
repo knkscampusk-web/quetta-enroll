@@ -1419,11 +1419,6 @@ function aggregateRoster(){
     if(currByD) b.등록계++;
     // 미납: 전월 등록 & 당월 미등록(≤D) & 미퇴소(≤D)
     if(prev!=null && !currByD && !outByD) b.미납++;
-    // 반이동 성별 판정용: 신규입소예정자 블록에 있고 반이 배정된 학생 (오늘 신규는 제외)
-    const isNewToday = (curr===Dmd || currIsThis) && (prev==null || currIsThis);
-    if(st._newBlock && real && !outByD && !isNewToday){
-      (moveCand[st.ban]=moveCand[st.ban]||[]).push(sex);
-    }
     // 금일 재등록
     if(curr===Dmd || currIsThis){
       if(curr===Dmd){ b.재등록++; if(sex==='남') b.재등록남++; else if(sex==='여') b.재등록여++; }
@@ -1637,24 +1632,17 @@ async function renderDash(){
       b.전일등록   = num(pRg);
       // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
       b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
-      b.배정남=0; b.배정여=0;
-      // 전입(+)은 신규입소예정자 블록에서 그 반으로 배정된 학생의 성별로 채운다
-      if(b.배정>0){
-        const cand=(R._movecand&&R._movecand[ban])||[];
-        for(let i=0;i<Math.min(b.배정,cand.length);i++){
-          if(cand[i]==='남') b.배정남++; else if(cand[i]==='여') b.배정여++;
-        }
-      }
+      // 성별 반변동 = 오늘 성별 인원(명단) − 어제 성별 인원(시트 G/K) − 신규 + 퇴소
+      const sp=(STATE.sheetPrev&&STATE.sheetPrev[ban])||null;
+      if(sp){
+        const gN=num(sp.G), gY=num(sp.K);
+        b.전일편성남=gN; b.전일편성여=gY;
+        b.배정남 = (b.편성계남||0) - gN - (b.신규남||0) + (b.퇴소남||0);
+        b.배정여 = (b.편성계여||0) - gY - (b.신규여||0) + (b.퇴소여||0);
+      } else { b.배정남=0; b.배정여=0; }
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
-    // 미배정 전출 성별 = 각 반 전입 성별의 합의 역수 (이동은 총계 불변)
-    const U=R.perBan['미배정'];
-    if(U && U.배정<0){
-      let inN=0, inY=0;
-      for(const ban of R.banList){ const x=R.perBan[ban]; if(!x) continue;
-        inN+=Math.max(0,x.배정남||0); inY+=Math.max(0,x.배정여||0); }
-      U.배정남=-inN; U.배정여=-inY;
-    }
+
   }
 
   const S=(f)=>Object.values(R.perBan).reduce((a,b)=>a+(b[f]||0),0);
