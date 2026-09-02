@@ -1631,12 +1631,8 @@ async function renderDash(){
       b.전일등록   = num(pRg);
       // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
       b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
-      // 반이동 성별: 저장본의 성별 편성계와 오늘 명단 성별 편성계의 차이 − 신규 + 퇴소
-      b.배정남 = b.편성계남 - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
-      b.배정여 = b.편성계여 - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
-      // 총 배정과 남/여 합이 어긋나면(성별 누락 등) 총계를 신뢰하고 잔여를 큰 쪽에 붙임
-      const d2=b.배정-(b.배정남+b.배정여);
-      if(d2) { if(Math.abs(b.배정남)>=Math.abs(b.배정여)) b.배정남+=d2; else b.배정여+=d2; }
+      // 성별 이동은 근거가 없으면 추정하지 않는다. (raw에 성별 편성인원 칸이 없음)
+      b.배정남=0; b.배정여=0;
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
   }
@@ -2621,7 +2617,6 @@ function buildCumulativeResult(date){
   const monOf=rows=>{ for(const r of rows){ const g=String(r[RAW_IDX.구분]||'').trim();
     if(/^\d{1,2}월$/.test(g)) return g; } return null; };
   let cumReg={}, curMon=null;
-  const cumN={}, cumY={};   // 반별 성별 편성계 누적 (개강후 등록-남/여, 환불-남/여)
   for(const d of dates){
     const rows=HIST.byDate[d].rows;
     const m=monOf(rows);
@@ -2629,9 +2624,6 @@ function buildCumulativeResult(date){
     const r=buildResultFromRaw(d, rows, null);
     for(const ban in r.perBan){
       cumReg[ban]=(cumReg[ban]||0)+(r.perBan[ban].재등록||0)-(r.perBan[ban].재등록환불||0);
-      const p=r.perBan[ban];
-      cumN[ban]=(cumN[ban]||0)+(p.신규남||0)-(p.퇴소남||0);
-      cumY[ban]=(cumY[ban]||0)+(p.신규여||0)-(p.퇴소여||0);
     }
   }
   day.regMonth=curMon;
@@ -2639,9 +2631,6 @@ function buildCumulativeResult(date){
     const b=day.perBan[ban];
     b.전일편성=b.편성||0;
     b.편성계=(b.편성||0)+(b.신규||0)-(b.퇴소||0);   // raw 편성은 전일편성(누적 carried)
-    // 성별 편성계: raw엔 편성인원-남/여 칸이 없어 개강후 등록·환불 남/여를 누적해 산출
-    b.편성계남=cumN[ban]||0;
-    b.편성계여=cumY[ban]||0;
     b.등록계=cumReg[ban]||0;                          // 재등록 누적
     b.전일등록=b.등록계-(b.재등록||0)+(b.재등록환불||0);
     b.미납=b.편성계-b.등록계;
