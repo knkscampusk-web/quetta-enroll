@@ -2369,12 +2369,20 @@ document.getElementById('enrollBtn').onclick=async()=>{
       const b=R.perBan[ban]; if(!b) continue;
       const c=carry[ban]||{J:'',N:'',R:''};
       // 시트에는 센 값만 넣는다. 잔차로 추정한 반이동은 섞지 않음(대시보드 표시와 동일).
-      const inN=Math.max(0,b.배정남||0), outN=Math.max(0,-(b.배정남||0));
-      const inY=Math.max(0,b.배정여||0), outY=Math.max(0,-(b.배정여||0));
-      const inR=Math.max(0,b.배정등록||0), outR=Math.max(0,-(b.배정등록||0));
-      const rec={ban,
-        sinN:(b.신규남||0)+inN, chulN:(b.퇴소남||0)+outN,
-        sinY:(b.신규여||0)+inY, chulY:(b.퇴소여||0)+outY,
+      // 대시보드 편성현황에 표시되는 값을 그대로 기입한다 (별도 재계산 금지)
+      const dIn =Math.max(0,b.배정||0),     dOut =Math.max(0,-(b.배정||0));
+      const dInN=Math.max(0,b.배정남||0),   dOutN=Math.max(0,-(b.배정남||0));
+      const dInY=Math.max(0,b.배정여||0),   dOutY=Math.max(0,-(b.배정여||0));
+      const inR =Math.max(0,b.배정등록||0), outR =Math.max(0,-(b.배정등록||0));
+      let sinN=(b.신규남||0)+dInN, chulN=(b.퇴소남||0)+dOutN;
+      let sinY=(b.신규여||0)+dInY, chulY=(b.퇴소여||0)+dOutY;
+      // 성별 합이 대시보드 총계와 어긋나면 총계를 기준으로 맞춘다
+      const tSin=(b.신규||0)+dIn, tChul=(b.퇴소||0)+dOut;
+      let dS=tSin-(sinN+sinY);   if(dS) sinN+=dS;
+      let dC=tChul-(chulN+chulY); if(dC) chulN+=dC;
+      if(sinN<0){ sinY+=sinN; sinN=0; }
+      if(chulN<0){ chulY+=chulN; chulN=0; }
+      const rec={ban, sinN, chulN, sinY, chulY,
         reReg:(b.재등록||0)+inR, reRef:(b.재등록환불||0)+outR};
       payload.push(rec);
       rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec, inN:0,outN:0,inY:0,outY:0,inR:0,outR:0});
