@@ -1626,20 +1626,24 @@ async function renderDash(){
       const p=PREV[ban]||PREV[String(ban).trim()]||{};
       const pPy = p.편성계!=null ? p.편성계 : ((p.편성||0)+(p.신규||0)-(p.퇴소||0));
       const pRg = p.등록계!=null ? p.등록계 : ((p.전일등록||0)+(p.재등록||0)-(p.재등록환불||0));
-      b.전일편성   = num(pPy);
-      b.전일편성남 = num(p.편성계남!=null?p.편성계남:0);
-      b.전일편성여 = num(p.편성계여!=null?p.편성계여:0);
-      b.전일등록   = num(pRg);
+      // 전일값은 2026정규 시트 한 곳에서만 가져온다 (G=남, K=여, 합=전일편성)
+      const sp0=(STATE.sheetPrev&&STATE.sheetPrev[ban])||null;
+      if(sp0){
+        b.전일편성남 = num(sp0.G);
+        b.전일편성여 = num(sp0.K);
+        b.전일편성   = b.전일편성남 + b.전일편성여;
+        b.전일등록   = num(sp0.O);
+      } else {
+        b.전일편성   = num(pPy);
+        b.전일편성남 = 0; b.전일편성여 = 0;
+        b.전일등록   = num(pRg);
+      }
       // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
       b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
-      // 성별 반변동 = 오늘 성별 인원(명단) − 어제 성별 인원(시트 G/K) − 신규 + 퇴소
-      const sp=(STATE.sheetPrev&&STATE.sheetPrev[ban])||null;
-      if(sp){
-        const gN=num(sp.G), gY=num(sp.K);
-        b.전일편성남=gN; b.전일편성여=gY;
-        b.배정남 = (b.편성계남||0) - gN - (b.신규남||0) + (b.퇴소남||0);
-        b.배정여 = (b.편성계여||0) - gY - (b.신규여||0) + (b.퇴소여||0);
-      } else { b.배정남=0; b.배정여=0; }
+      b.배정남 = (b.편성계남||0) - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
+      b.배정여 = (b.편성계여||0) - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
+      // [임시 진단] 확인 후 제거
+      (R._dbg2=R._dbg2||[]).push(`${ban}: 계남${b.편성계남} G${b.전일편성남} 신남${b.신규남||0} 퇴남${b.퇴소남||0} → 배남${b.배정남} | 계여${b.편성계여} K${b.전일편성여} 신여${b.신규여||0} 퇴여${b.퇴소여||0} → 배여${b.배정여}`);
       b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
     }
 
@@ -1683,6 +1687,7 @@ async function renderDash(){
     (R._historical?`<span class="tag" style="background:var(--peri-soft);color:var(--peri-ink)">과거</span> `:``)+
     `작성자 ${R.writer||'-'} · 편입 ${S('편입')} · 반수 ${S('반수')}`
     + (R._dbg?`<br><span style="color:#c2410c;font-size:11px">[임시] ${R._dbg}</span>`:'')
+    + (R._dbg2?`<br><span style="color:#c2410c;font-size:11px">[임시2] ${R._dbg2.join(' &nbsp;/&nbsp; ')}</span>`:'')
     + (R._roster ? (R._prevDate
         ? ` · <span style="${_isYday(R._prevDate,R.base)?'':'color:var(--red);font-weight:700'}">전일값 기준 ${R._prevDate.slice(5).replace('-','/')}</span>`
         : ` · <span style="color:var(--red);font-weight:700">전일값 없음</span>`) : '');
@@ -1796,6 +1801,18 @@ async function renderDash(){
   r2.push(`<tr class="tot"><td>소계</td>
     <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${soUnpaid}</td></tr>`);
+  // 대시보드가 화면에 찍는 값을 그대로 보관 → 개강후 기입이 이 값만 사용(재계산 금지)
+  R._shown={};
+  for(const ban of [...R.banList,'미배정']){
+    const b=R.perBan[ban]; if(!b) continue;
+    const P=v=>Math.max(0,v||0), Ng=v=>Math.max(0,-(v||0));
+    R._shown[ban]={
+      sin :(b.신규||0)+P(b.배정),      chul:(b.퇴소||0)+Ng(b.배정),
+      sinN:(b.신규남||0)+P(b.배정남),   chulN:(b.퇴소남||0)+Ng(b.배정남),
+      sinY:(b.신규여||0)+P(b.배정여),   chulY:(b.퇴소여||0)+Ng(b.배정여),
+      reReg:(b.재등록||0)+P(b.배정등록), reRef:(b.재등록환불||0)+Ng(b.배정등록)
+    };
+  }
   const t2=document.getElementById('dashTable2');
   if(t2) t2.innerHTML=`<thead><tr><th>반</th><th>전일등록</th><th>재등록</th><th>환불</th><th>등록계</th><th>미납</th></tr></thead><tbody>${r2.join('')}</tbody>`;
 
@@ -2369,11 +2386,12 @@ document.getElementById('enrollBtn').onclick=async()=>{
       const c=carry[ban]||{J:'',N:'',R:''};
       // 시트에는 센 값만 넣는다. 잔차로 추정한 반이동은 섞지 않음(대시보드 표시와 동일).
       // 대시보드 편성현황에 표시되는 값을 그대로 기입한다 (별도 계산·합산 없음)
-      const P=v=>Math.max(0,v||0), Ng=v=>Math.max(0,-(v||0));
-      const rec={ban,
-        sinN:(b.신규남||0)+P(b.배정남), chulN:(b.퇴소남||0)+Ng(b.배정남),
-        sinY:(b.신규여||0)+P(b.배정여), chulY:(b.퇴소여||0)+Ng(b.배정여),
-        reReg:(b.재등록||0)+P(b.배정등록), reRef:(b.재등록환불||0)+Ng(b.배정등록)};
+      // 대시보드가 화면에 찍은 값을 그대로 사용 (재계산 없음)
+      const sv=(R._shown&&R._shown[ban])||null;
+      const rec = sv
+        ? {ban, sinN:sv.sinN, chulN:sv.chulN, sinY:sv.sinY, chulY:sv.chulY, reReg:sv.reReg, reRef:sv.reRef}
+        : {ban, sinN:b.신규남||0, chulN:b.퇴소남||0, sinY:b.신규여||0, chulY:b.퇴소여||0,
+           reReg:b.재등록||0, reRef:b.재등록환불||0};
       payload.push(rec);
       rows.push({ban, cJ:c.J, cN:c.N, cR:c.R, ...rec, inN:0,outN:0,inY:0,outY:0,inR:0,outR:0});
     }
