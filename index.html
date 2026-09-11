@@ -686,8 +686,8 @@ async function buildDailyFromSb(date){
   const dateOf=p=>(p.uploadedDate||p.결제일자);
   // 신규 판정: 이전 월 기수(prevTerms)에 이미 납부기록 있으면 신규 아님
   const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
-  // 등록: 그날 uploadedDate. 당일퇴소(같은 날 환불)도 등록은 등록이므로 환불금액으로 제외하지 않음
-  const regs=pays.filter(p=>dateOf(p)===date && p.status==='active');
+  // 등록: 그날 uploadedDate. 당일퇴소(같은 날 환불/상태변경)도 '그날 등록한 사실'은 그대로 카운트
+  const regs=pays.filter(p=>dateOf(p)===date && (p.status==='active' || (p.환불금액||0)>0));
   // 환불: 그날 환불된 pays + refunds
   const refs=[
     ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0),
