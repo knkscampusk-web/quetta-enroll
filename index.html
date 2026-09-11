@@ -688,6 +688,15 @@ async function buildDailyFromSb(date){
   const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
   // 등록: 그날 uploadedDate. 당일퇴소(같은 날 환불/상태변경)도 '그날 등록한 사실'은 그대로 카운트
   const regs=pays.filter(p=>dateOf(p)===date && (p.status==='active' || (p.환불금액||0)>0));
+  // 당일퇴소로 pays에서 refunds로 옮겨진 건도 '그날 등록'이면 등록에 포함
+  const regIds=new Set(regs.map(p=>norm(p.수험번호)));
+  const sameDayRef=refunds.filter(r=>{
+    if(_refDateSb(r)!==date) return false;                 // 그날 환불 처리된 건
+    const rd=r.uploadedDate||r.결제일자||r.등록일||'';      // 그날 등록한 건만
+    if(String(rd).slice(0,10)!==date) return false;
+    return !regIds.has(norm(r.수험번호));
+  }).map(r=>({수험번호:r.수험번호, 이름:r.이름, 반:r.반, 내역:(r.removedTerms||[]).join('/'), 장학:r.장학||''}));
+  regs.push(...sameDayRef);
   // 환불: 그날 환불된 pays + refunds
   const refs=[
     ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0),
