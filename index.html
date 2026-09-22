@@ -224,6 +224,13 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <div class="small"><a id="roleBack">← 뒤로</a></div>
     </div>
 
+    <div id="gateSeasonStep" style="display:none">
+      <p style="margin:0 0 16px">어느 시즌으로 들어갈까요?</p>
+      <button class="seasonPick" data-season="정규">정규</button>
+      <button class="seasonPick" data-season="반수" style="background:var(--panel2);color:var(--teal-ink);box-shadow:none;border:1px solid var(--line)">반수</button>
+      <button class="seasonPick" data-season="윈터" style="background:var(--panel2);color:var(--teal-ink);box-shadow:none;border:1px solid var(--line)">윈터</button>
+    </div>
+
     <div class="err" id="gateErr"></div>
     <div class="small">
       처음이세요? <a id="setupLink">초기 설정(Firebase·비번)</a>
@@ -237,7 +244,9 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div class="brand"><b>QUETTA</b> 등록보고</div>
   <div class="sub">매일 경영지원 자료 → 등록파일 raw 행 산출</div>
   <div class="spacer"></div>
-  <div class="who"><span class="dot" id="connDot"></span><span id="connTxt">연결 확인 중…</span></div>
+  <div class="who"><span class="tag pre" id="seasonBadge">정규시즌</span>
+    <a id="seasonChange" style="color:var(--teal);cursor:pointer;font-weight:600;margin:0 12px 0 8px">시즌 변경</a>
+    <span class="dot" id="connDot"></span><span id="connTxt">연결 확인 중…</span></div>
 </header>
 
 <nav>
@@ -257,7 +266,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row">
       <div class="field"><label>기준 날짜</label><input type="date" id="baseDate"></div>
       <div class="field"><label>시즌</label>
-        <select id="season"><option value="정규">정규</option><option value="반수">반수</option><option value="윈터">윈터</option></select>
+        <select id="season" disabled title="시즌은 입장 화면에서 선택합니다"><option value="정규">정규</option><option value="반수">반수</option><option value="윈터">윈터</option></select>
       </div>
       <div class="field"><label>작성자</label><input id="writer" placeholder="이름"></div>
       <div class="field"><label>현재 구분</label><div id="splitTag" style="padding-top:6px"></div></div>
@@ -796,7 +805,7 @@ async function setGateHash(h){
 document.getElementById('gateBtn').onclick = enterGate;
 document.getElementById('gatePw').addEventListener('keydown',e=>{ if(e.key==='Enter') enterGate(); });
 document.getElementById('setupLink').onclick = ()=>{ setRole('staff'); openApp(); switchTab('set'); };
-document.getElementById('roleViewer').onclick = ()=>{ setRole('viewer'); sessionStorage.setItem(LK('in'),'1'); openApp(); switchTab('analysis'); };
+document.getElementById('roleViewer').onclick = ()=>{ setRole('viewer'); sessionStorage.setItem(LK('in'),'1'); PENDING_TAB='analysis'; openApp(); };
 document.getElementById('roleStaff').onclick = ()=>{ document.getElementById('gateRole').style.display='none'; document.getElementById('gatePwStep').style.display='block'; document.getElementById('gatePw').focus(); };
 document.getElementById('roleBack').onclick = ()=>{ document.getElementById('gatePwStep').style.display='none'; document.getElementById('gateRole').style.display='block'; document.getElementById('gateErr').textContent=''; };
 
@@ -821,7 +830,33 @@ async function enterGate(){
   if(await sha256(pw)===stored){ setRole('staff'); sessionStorage.setItem(LK('in'),'1'); openApp(); }
   else err.textContent='비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
 }
-function openApp(){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; applyRole(currentRole()); }
+// 로그인 후 시즌 선택 단계. 시즌마다 rawlog·analysis·설정 네임스페이스가 달라
+// 세션 시작 시 한 번 정하고, 바꿀 때도 이 화면으로 돌아온다.
+let PENDING_TAB=null;
+function showSeasonStep(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('gate').style.display='flex';
+  document.getElementById('gateRole').style.display='none';
+  document.getElementById('gatePwStep').style.display='none';
+  document.getElementById('gateSeasonStep').style.display='block';
+  document.getElementById('gateErr').textContent='';
+}
+async function enterSeason(sn){
+  setSeason(sn);
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  applyRole(currentRole());
+  // 시즌별 설정·누적 로그를 다시 읽는다
+  AN.series={}; AN.memos=[];
+  HIST.byDate={}; HIST.dates=[];
+  try{ await loadCfg(); }catch(e){ console.error(e); }
+  try{ await loadRawlogAll(); }catch(e){ console.error(e); }
+  refreshHistUI(); updateSplitTag();
+  if(PENDING_TAB){ const t=PENDING_TAB; PENDING_TAB=null; switchTab(t); }
+}
+function openApp(){ showSeasonStep(); }
+document.querySelectorAll('.seasonPick').forEach(b=>b.onclick=()=>enterSeason(b.dataset.season));
+document.getElementById('seasonChange').onclick=()=>showSeasonStep();
 
 /* ===================================================================
  * 2) 탭
@@ -1031,18 +1066,22 @@ function renderMemos(){
 // 분석 시리즈 Firebase 저장/로드 (뷰어도 파일 없이 보게)
 async function saveAnalysisYear(year, data){
   if(!fbReady) return;
-  try{ await setDoc(doc(db,COL('analysis'),String(year)),{year:String(year),data,savedAt:Date.now()}); }catch(e){ console.error(e); }
+  try{ await setDoc(doc(db,COL('analysis'),NSID(String(year))),{year:String(year),data,savedAt:Date.now()}); }catch(e){ console.error(e); }
 }
 async function loadAnalysisAll(){
   if(!fbReady) return;
+  const _pfx=RLPFX();
   try{ const snap=await getDocs(collection(db,COL('analysis')));
-    snap.forEach(d=>{ if(d.id==='_memos'){ const v=d.data(); AN.memos=Array.isArray(v.list)?v.list:[]; return; }
+    snap.forEach(d=>{
+      // 다른 시즌 문서는 건너뛴다(윈터는 접두어 있는 것만, 정규·반수는 없는 것만)
+      if(_pfx){ if(d.id.indexOf(_pfx)!==0) return; } else if(d.id.indexOf('_')===0 || d.id.indexOf('winter_')===0){ if(d.id!=='_memos') return; }
+      if(d.id===NSID('_memos')){ const v=d.data(); AN.memos=Array.isArray(v.list)?v.list:[]; return; }
       const v=d.data(); if(v&&Array.isArray(v.data)){ v.data.forEach((o,i)=>o.idx=i); let cr=0,cf=0; v.data.forEach(o=>{cr+=o.금일등록||0;cf+=o.금일환불||0;o.cumReg=cr;o.cumRef=cf;}); AN.series[v.year]=v.data; } });
   }catch(e){ console.error(e); }
 }
 async function saveMemos(){
   if(!fbReady){ try{ localStorage.setItem(LK('memos'), JSON.stringify(AN.memos||[])); }catch(e){} return; }
-  try{ await setDoc(doc(db,COL('analysis'),'_memos'),{list:AN.memos||[],savedAt:Date.now()}); }catch(e){ console.error(e); }
+  try{ await setDoc(doc(db,COL('analysis'),NSID('_memos')),{list:AN.memos||[],savedAt:Date.now()}); }catch(e){ console.error(e); }
 }
 // 올해 원장님 보고 한 점 자동 축적 (현황 저장 시 호출)
 // 올해 시계열은 rawlog(지난 등록 보기 데이터)에서 그때그때 산출한다.
@@ -1077,7 +1116,7 @@ async function accumulateAnalysisPoint(R){
   const pt={mo,dy,금일등록:R.newc||0,금일환불:-(R.ref||0),등록인원:R._regTotal!=null?R._regTotal:0};
   // 기존 로드 후 같은 날짜 갱신/추가
   let data=[];
-  try{ const s=await getDoc(doc(db,COL('analysis'),yr)); if(s.exists()&&Array.isArray(s.data().data)) data=s.data().data; }catch(e){}
+  try{ const s=await getDoc(doc(db,COL('analysis'),NSID(yr))); if(s.exists()&&Array.isArray(s.data().data)) data=s.data().data; }catch(e){}
   const i=data.findIndex(o=>o.mo===mo&&o.dy===dy);
   if(i>=0) data[i]=pt; else data.push(pt);
   data.sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
@@ -2065,9 +2104,18 @@ async function saveRawlogDay(date, rows){
 // (저장은 그대로 Firestore → 팀 공유 유지)
 // 시즌별 rawlog 분리 — 정규는 기존 그대로(날짜), 윈터만 'winter_' 접두어.
 // 반수는 rawlog를 저장하지 않으므로 대상 아님. 마이그레이션 없음.
-function _seasonNow(){ const el=document.getElementById('season'); return el?el.value:'정규'; }
+let SEASON = sessionStorage.getItem(LK('season')) || '정규';
+function _seasonNow(){ return SEASON; }
+function setSeason(s){
+  SEASON = s;
+  sessionStorage.setItem(LK('season'), s);
+  const sel=document.getElementById('season'); if(sel) sel.value=s;
+  const bd=document.getElementById('seasonBadge'); if(bd) bd.textContent=s+'시즌';
+}
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
 function RLID(date, season){ return RLPFX(season)+date; }
+// analysis·config 문서도 같은 규칙. 정규·반수는 기존 ID 그대로(마이그레이션 없음).
+function NSID(id, season){ return RLPFX(season)+id; }
 const RLC=()=>LK('rawlogcache'+(RLPFX()?'_winter':''));
 function _rlcLoad(){ try{ const j=JSON.parse(localStorage.getItem(RLC())||'null');
   return (j&&j.byDate)?j:null; }catch(e){ return null; } }
@@ -2153,8 +2201,8 @@ let CFG={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],billMon
 const parseList = s => (s||'').split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
 async function loadCfg(){
   let c=null;
-  if(fbReady){ try{ const s=await getDoc(doc(db,COL('config'),'app')); if(s.exists()) c=s.data(); }catch(e){} }
-  if(!c){ try{ c=JSON.parse(localStorage.getItem(LK('cfg'))||'null'); }catch(e){} }
+  if(fbReady){ try{ const s=await getDoc(doc(db,COL('config'),NSID('app'))); if(s.exists()) c=s.data(); }catch(e){} }
+  if(!c){ try{ c=JSON.parse(localStorage.getItem(LK('cfg')+(RLPFX()?'_winter':''))||'null'); }catch(e){} }
   if(c){ CFG={...CFG,...c}; }
   if(!Array.isArray(CFG.banList)) CFG.banList=[];
   if(!Array.isArray(CFG.jhList)) CFG.jhList=[];
@@ -2192,11 +2240,11 @@ document.getElementById('cfgSaveBtn').onclick=async()=>{
   CFG.writer=document.getElementById('cfgWriter').value;
   CFG.banList=parseList(document.getElementById('cfgBanList').value);
   CFG.jhList=parseList(document.getElementById('cfgJhList').value);
-  localStorage.setItem(LK('cfg'),JSON.stringify(CFG));
+  localStorage.setItem(LK('cfg')+(RLPFX()?'_winter':''),JSON.stringify(CFG));
   if(CFG.writer) document.getElementById('writer').value=CFG.writer;
   updateSplitTag();
   if(!fbReady){ toast('⚠ Firebase 미연결 — 로컬에만 저장됨'); return; }
-  try{ await setDoc(doc(db,COL('config'),'app'),CFG,{merge:true}); toast('✅ 설정 저장됨(공유)'); }
+  try{ await setDoc(doc(db,COL('config'),NSID('app')),CFG,{merge:true}); toast('✅ 설정 저장됨(공유)'); }
   catch(e){ console.error(e); toast('⚠ 설정 저장 실패: '+(e.code||e.message)); }
 };
 document.getElementById('cfgBaseSaveBtn').onclick=async()=>{
@@ -2209,11 +2257,11 @@ document.getElementById('cfgBaseSaveBtn').onclick=async()=>{
     reg:parseInt(document.getElementById('cfgBlReg').value)||0,
     unreg:parseInt(document.getElementById('cfgBlUnreg').value)||0
   };
-  localStorage.setItem(LK('cfg'),JSON.stringify(CFG));
+  localStorage.setItem(LK('cfg')+(RLPFX()?'_winter':''),JSON.stringify(CFG));
   syncBaselineFields();
   if(STATE.result) renderDash();
   if(!fbReady){ toast('⚠ Firebase 미연결 — 로컬에만 저장됨'); return; }
-  try{ await setDoc(doc(db,COL('config'),'app'),CFG,{merge:true}); toast(`✅ ${m}월분 집계설정 저장됨(공유)`); }
+  try{ await setDoc(doc(db,COL('config'),NSID('app')),CFG,{merge:true}); toast(`✅ ${m}월분 집계설정 저장됨(공유)`); }
   catch(e){ console.error(e); toast('⚠ 저장 실패: '+(e.code||e.message)); }
 };
 // 장학 매핑 렌더 (JANG_LIST 7줄 + 코드 입력칸)
@@ -2234,10 +2282,10 @@ document.getElementById('cfgJangSaveBtn').onclick=async()=>{
     if(codes.length) map[label]=codes;
   });
   CFG.jangMap=map;
-  localStorage.setItem(LK('cfg'),JSON.stringify(CFG));
+  localStorage.setItem(LK('cfg')+(RLPFX()?'_winter':''),JSON.stringify(CFG));
   if(STATE.result) renderDash();
   if(!fbReady){ toast('⚠ Firebase 미연결 — 로컬에만 저장됨'); return; }
-  try{ await setDoc(doc(db,COL('config'),'app'),CFG,{merge:true}); toast('✅ 장학 매핑 저장됨(공유)'); }
+  try{ await setDoc(doc(db,COL('config'),NSID('app')),CFG,{merge:true}); toast('✅ 장학 매핑 저장됨(공유)'); }
   catch(e){ console.error(e); toast('⚠ 저장 실패: '+(e.code||e.message)); }
 };
 // 코드 → 장학 라벨 역매핑
@@ -2630,13 +2678,7 @@ document.getElementById('gsLoadBtn').onclick=async()=>{
   }
 };
 document.getElementById('baseDate').addEventListener('change',updateSplitTag);
-document.getElementById('season').addEventListener('change',async()=>{
-  updateSplitTag();
-  // 시즌마다 rawlog 네임스페이스와 캐시가 다르므로 다시 읽는다
-  HIST.byDate={}; HIST.dates=[];
-  try{ await loadRawlogAll(); }catch(e){ console.error(e); }
-  refreshHistUI();
-});
+// 시즌 전환은 입장 화면(게이트)에서만 — 작업 중 섞이는 것을 막는다.
 
 /* ===================================================================
  * 9-1) 지난 등록 보기 — raw 로그(2026raw정규) CSV/엑셀에서 날짜별 재구성
@@ -2847,15 +2889,15 @@ function renderHist(R){
  * =================================================================== */
 (async function(){
   await initFirebase();
-  await loadCfg();
-  await loadRawlogAll();   // 누적 raw 로그 자동 복원 (지난 등록 보기) — 캐시 우선
+  // 설정·누적 로그는 시즌이 정해진 뒤(enterSeason) 읽는다 — 시즌별 네임스페이스라서.
   const _hr=document.getElementById('histReloadBtn');
   if(_hr) _hr.onclick=async()=>{ _hr.disabled=true; _hr.textContent='불러오는 중…';
     try{ await loadRawlogAll(true); toast('✅ 전체 새로고침 완료'); }
     finally{ _hr.disabled=false; _hr.textContent='전체 새로고침'; } };
+  setSeason(SEASON);
   updateSplitTag();
-  // 이미 이번 세션에 들어왔다면 게이트 패스
-  if(sessionStorage.getItem(LK('in'))==='1') openApp();
+  // 이미 이번 세션에 들어왔다면 로그인은 건너뛰고 시즌 선택부터
+  if(sessionStorage.getItem(LK('in'))==='1') showSeasonStep();
 })();
 </script>
 </body>
