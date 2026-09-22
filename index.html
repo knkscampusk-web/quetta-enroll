@@ -477,18 +477,18 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <button class="backbtn" id="setBack">← 대시보드로 돌아가기</button>
   <div class="card">
     <h3><span class="pin"></span> 지난 등록 로그 업로드</h3>
-    <div class="desc">2026raw정규 시트를 CSV/엑셀로 올리면, ‘지난 등록 보기’ 탭에서 날짜를 골라 그날 현황을 볼 수 있어요.</div>
+    <div class="desc" id="histUpDesc"></div>
     <div class="uploads" style="grid-template-columns:1fr">
       <label class="drop" id="dropHist">
         <input type="file" accept=".csv,.xlsx,.xls" hidden id="fileHist">
-        <b>raw 로그 업로드 (2026raw정규 CSV/엑셀)</b><br><span class="fn" id="nameHist">파일 선택 / 끌어놓기</span>
+        <b id="histUpLabel"></b><br><span class="fn" id="nameHist">파일 선택 / 끌어놓기</span>
       </label>
     </div>
     <div class="note" id="histNote2"></div>
   </div>
   <div class="card">
     <h3><span class="pin"></span> 분석용 자료 업로드 (작년 raw 로그)</h3>
-    <div class="desc">작년 raw(2025raw정규) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 날짜의 연도를 자동 인식합니다.</div>
+    <div class="desc" id="anUpDesc"></div>
     <div class="row" id="anUploadRow">
       <label class="drop" id="dropRep" style="flex:1">
         <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
@@ -527,7 +527,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="note">등록·환불이 없는 반/전형도 raw에 항상 0으로 출력됩니다. 비워두면 그날 자료에 등장한 항목만 출력해요.</div>
   </div>
 
-  <div class="card">
+  <div class="card" data-season-only="정규,반수">
     <h3><span class="pin"></span> 재등록 집계 & 미등록 베이스라인</h3>
     <div class="desc">매달 재등록 기간이 시작되면 <b>현재 집계월</b>을 바꾸세요. 미등록 누적은 경영지원 앱에서 자동으로 끌어오고, 못 가져올 때만 아래 베이스라인을 씁니다.</div>
     <div class="row">
@@ -2030,7 +2030,7 @@ function rawRows(){
   return out;
 }
 function renderRaw(){
-  const rs=document.getElementById('rawSheet'); if(rs) rs.textContent = STATE.result?.season==='반수' ? '2026raw반수' : '2026raw정규';
+  const rs=document.getElementById('rawSheet'); if(rs) rs.textContent = rawSheetName(STATE.result?.season);
   const tbl=document.getElementById('rawTable'); if(!tbl) return;   // raw 탭 제거됨 → 화면 갱신 생략(내부 로직은 유지)
   const rows=rawRows();
   const h=`<thead><tr>${RAW_COLS.map(c=>`<th>${c}</th>`).join('')}</tr></thead>`;
@@ -2112,6 +2112,23 @@ async function saveRawlogDay(date, rows){
 // 반수는 rawlog를 저장하지 않으므로 대상 아님. 마이그레이션 없음.
 let SEASON = sessionStorage.getItem(LK('season')) || '정규';
 function _seasonNow(){ return SEASON; }
+// 시즌별 raw 시트 이름 (업로드 안내 문구에 사용)
+function rawSheetName(season, year){
+  const s=season||SEASON, y=year||(new Date().getFullYear());
+  if(s==='반수') return y+'raw반수';
+  if(s==='윈터') return y+'raw';      // 윈터 등록시트의 raw 탭
+  return y+'raw정규';
+}
+function syncSeasonTexts(s){
+  const now=new Date().getFullYear();
+  const cur=rawSheetName(s, now), prev=rawSheetName(s, now-1);
+  const d1=document.getElementById('histUpDesc');
+  if(d1) d1.textContent = `${cur} 시트를 CSV/엑셀로 올리면, ‘지난 등록 보기’ 탭에서 날짜를 골라 그날 현황을 볼 수 있어요.`;
+  const l1=document.getElementById('histUpLabel');
+  if(l1) l1.textContent = `raw 로그 업로드 (${cur} CSV/엑셀)`;
+  const d2=document.getElementById('anUpDesc');
+  if(d2) d2.textContent = `작년 raw(${prev}) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 날짜의 연도를 자동 인식합니다.`;
+}
 function setSeason(s){
   SEASON = s;
   sessionStorage.setItem(LK('season'), s);
@@ -2121,6 +2138,7 @@ function setSeason(s){
   document.querySelectorAll('[data-season-only]').forEach(el=>{
     el.style.display = el.dataset.seasonOnly.split(',').indexOf(s)>=0 ? '' : 'none';
   });
+  syncSeasonTexts(s);
 }
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
 function RLID(date, season){ return RLPFX(season)+date; }
