@@ -2211,7 +2211,17 @@ async function importRawlogToFirebase(byDate){
 // 드롭다운/안내 갱신 (지난 등록 보기 탭 + 설정 탭)
 function refreshHistUI(){
   const sel=document.getElementById('histDate'); const btn=document.getElementById('histViewBtn');
-  if(!HIST.dates.length) return;
+  if(!HIST.dates.length){
+    // 시즌을 바꿨는데 그 시즌 로그가 없으면 이전 시즌 목록이 남아 섞여 보인다. 반드시 비운다.
+    sel.innerHTML='<option value="">— 없음 —</option>';
+    sel.disabled=true; btn.disabled=true;
+    const hn=document.getElementById('histNote'); if(hn) hn.textContent=`${SEASON} 누적 로그 없음`;
+    const hn2=document.getElementById('histNote2'); if(hn2) hn2.textContent='';
+    const hv=document.getElementById('histView'); if(hv) hv.style.display='none';
+    const hb=document.getElementById('histBody'); if(hb) hb.innerHTML='';
+    const hl=document.getElementById('histList'); if(hl) hl.style.display='';
+    return;
+  }
   sel.innerHTML=HIST.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
   sel.value=HIST.dates[HIST.dates.length-1];
   sel.disabled=false; btn.disabled=false;
