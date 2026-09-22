@@ -257,7 +257,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row">
       <div class="field"><label>기준 날짜</label><input type="date" id="baseDate"></div>
       <div class="field"><label>시즌</label>
-        <select id="season"><option value="정규">정규</option><option value="반수">반수</option></select>
+        <select id="season"><option value="정규">정규</option><option value="반수">반수</option><option value="윈터">윈터</option></select>
       </div>
       <div class="field"><label>작성자</label><input id="writer" placeholder="이름"></div>
       <div class="field"><label>현재 구분</label><div id="splitTag" style="padding-top:6px"></div></div>
@@ -676,6 +676,29 @@ async function sbReRegUnpaid(){
   let 미납=0; prevIds.forEach(id=>{ if(!currIds.has(id)) 미납++; });
   return { 재등록누적:currIds.size, 미납, currTerms:curr, prevTerms:prev };
 }
+// 경영지원 기준 미납을 반별로 분해. 누가 미납인지는 경영지원(Supabase),
+// 어느 반인지는 학생명단의 현재 반(assign: 수험번호 → 반)으로 정한다.
+// 명단에 없는 수험번호는 '미배정'으로 모으고 미매칭 건수로 보고한다(추정·배분 금지).
+async function sbUnpaidByBan(assign, banList){
+  const st=await loadSbState();
+  const pays=Array.isArray(st.pays)?st.pays:[];
+  const curr=(st.cfg&&st.cfg.currTerms)||[];
+  const prev=(st.cfg&&st.cfg.prevTerms)||[];
+  const nsid=v=>String(v==null?'':v).replace(/\s/g,'');
+  const act=p=>p.status==='active'&&(p.환불금액||0)===0;
+  const currIds=new Set(pays.filter(p=>act(p)&&curr.includes(p.내역)).map(p=>nsid(p.수험번호)));
+  const prevIds=new Set(pays.filter(p=>act(p)&&prev.includes(p.내역)).map(p=>nsid(p.수험번호)));
+  const perBan={}; let 총계=0; const 미매칭=[];
+  prevIds.forEach(id=>{
+    if(currIds.has(id)) return;
+    총계++;
+    let ban=assign?assign[id]:null;
+    if(!ban){ 미매칭.push(id); ban='미배정'; }
+    else if(banList && !banList.includes(ban)) ban='미배정';
+    perBan[ban]=(perBan[ban]||0)+1;
+  });
+  return { perBan, 총계, 미매칭, currTerms:curr, prevTerms:prev };
+}
 // 경영지원 Supabase에서 그날 일일명단 재구성 (그 앱 exportDailyExcel 로직 재현)
 function _refDateSb(r){ return r.processedDate || (r.processedAt? (d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date(r.processedAt)) : ''); }
 async function buildDailyFromSb(date){
@@ -928,7 +951,7 @@ async function importRawIntoRawlog(rows, hi){
     if(fbReady){
       let batch=writeBatch(db), n=0;
       for(const d of dates){
-        batch.set(doc(db,COL('rawlog'),d), { date:d, rows:packRows(byDate[d]), savedAt:Date.now() });
+        batch.set(doc(db,COL('rawlog'),RLID(d)), { date:d, rows:packRows(byDate[d]), savedAt:Date.now() });
         if(++n%400===0){ await batch.commit(); batch=writeBatch(db); }
       }
       await batch.commit();
@@ -1455,6 +1478,8 @@ function aggregateRoster(){
   //    어제 저장본이 있으면 renderDash에서 실제 어제값으로 덮어씀.
   for(const ban in perBan){ const b=perBan[ban];
     b.전일편성 = b.편성계 - (b.신규||0) + (b.퇴소||0);
+    b.전일편성남 = (b.편성계남||0) - (b.신규남||0) + (b.퇴소남||0);
+    b.전일편성여 = (b.편성계여||0) - (b.신규여||0) + (b.퇴소여||0);
     b.전일등록 = b.등록계 - (b.재등록||0) + (b.재등록환불||0);
   }
 
@@ -1630,15 +1655,21 @@ async function renderDash(){
         b.전일편성   = b.전일편성남 + b.전일편성여;
         b.전일등록   = num(sp0.R);
       } else {
+        // 시트 전일값이 없는 반: 어제 저장본의 편성계 남/여로 폴백(0으로 두지 않음)
         b.전일편성   = num(pPy);
-        b.전일편성남 = 0; b.전일편성여 = 0;
+        b.전일편성남 = num(p.편성계남);
+        b.전일편성여 = num(p.편성계여);
         b.전일등록   = num(pRg);
       }
-      // 반배정 = (오늘 인원 − 어제 인원) − 신규 + 퇴소. 신규·퇴소 칸에 합산해 표시.
-      b.배정 = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
-      b.배정남 = (b.편성계남||0) - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
-      b.배정여 = (b.편성계여||0) - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
-      b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
+      // ⚠ 반배정 역산 중단(2026-09-14).
+      //   편성계를 '전일편성 + 신규 − 퇴소'로 정의하면 아래 식은 항등적으로 0이 된다.
+      //   기존에 잡히던 잔차는 이동이 아니라 '환불자 이동' 전이라 명단에 남아 있던 퇴소자였다.
+      //   식은 기록용으로만 남기고 값은 0으로 고정한다. 되살리지 말 것.
+      // b.배정   = b.편성계 - b.전일편성 - (b.신규||0) + (b.퇴소||0);
+      // b.배정남 = (b.편성계남||0) - b.전일편성남 - (b.신규남||0) + (b.퇴소남||0);
+      // b.배정여 = (b.편성계여||0) - b.전일편성여 - (b.신규여||0) + (b.퇴소여||0);
+      // b.배정등록 = b.등록계 - b.전일등록 - (b.재등록||0) + (b.재등록환불||0);
+      b.배정 = 0; b.배정남 = 0; b.배정여 = 0; b.배정등록 = 0;
     }
 
   }
@@ -1652,26 +1683,47 @@ async function renderDash(){
     return fallback;
   };
 
+  // 미납(명단 모드): 경영지원 기준 — 전월 기수 납부자 중 당월 기수 미납부자.
+  // 반은 학생명단의 현재 반(R._assign)으로 붙인다.
+  let SBU=null; R._unpaidErr=null; R._unpaidUnmatched=0;
+  if(R._roster){
+    try{ SBU=await sbUnpaidByBan(R._assign, R.banList); R._unpaidUnmatched=SBU.미매칭.length; }
+    catch(e){ SBU=null; R._unpaidErr=(e.message||String(e)); }
+  }
+
   // 반별 두 축 계산 + 전일계 stash (다음날 전일값으로 사용)
   let T={신규:0,신규남:0,신규여:0,퇴소:0,퇴소남:0,퇴소여:0,편성계:0,편성계남:0,편성계여:0,
          재등록:0,재등록남:0,재등록여:0,재등록환불:0,등록계:0,미납:0,전일편성:0,전일등록:0};
   for(const ban of [...R.banList,'미배정']){
     const b=R.perBan[ban]; if(!b) continue;
     if(!R._roster){
-      const 전일편성=prevOf(ban,'편성계', b.편성||0);
-      const 전일등록=prevOf(ban,'등록계', 0);
-      b.전일편성=전일편성; b.전일등록=전일등록;
-      b.편성계 = 전일편성 + (b.신규||0) - (b.퇴소||0);
-      b.등록계 = 전일등록 + (b.재등록||0) - (b.재등록환불||0);
-      b.미납   = b.편성계 - b.등록계;
+      b.전일편성=prevOf(ban,'편성계', b.편성||0);
+      b.전일등록=prevOf(ban,'등록계', 0);
     }
+    // 편성계·등록계는 명단 카운트가 아니라 전일값 누적으로만 산출한다(명단 모드 포함).
+    // 퇴소자는 '환불자 이동' 실행 전까지 명단에 남아 있으므로 카운트하면 편성계가 부푼다.
+    b.편성계 = (b.전일편성||0) + (b.신규||0) - (b.퇴소||0);
+    b.등록계 = (b.전일등록||0) + (b.재등록||0) - (b.재등록환불||0);
+    if(R._roster){
+      b.편성계남 = (b.전일편성남||0) + (b.신규남||0) - (b.퇴소남||0);
+      b.편성계여 = (b.전일편성여||0) + (b.신규여||0) - (b.퇴소여||0);
+    }
+    // 미납: 명단 모드는 경영지원(Supabase) 기준. 못 가져오면 '—'(추정하지 않음).
+    b.미납 = SBU ? (SBU.perBan[ban]||0) : (R._roster ? null : b.편성계 - b.등록계);
     T.신규+=b.신규||0; T.신규남+=b.신규남||0; T.신규여+=b.신규여||0;
     T.퇴소+=b.퇴소||0; T.퇴소남+=b.퇴소남||0; T.퇴소여+=b.퇴소여||0;
     T.재등록+=b.재등록||0; T.재등록남+=b.재등록남||0; T.재등록여+=b.재등록여||0;
     T.재등록환불+=b.재등록환불||0;
-    T.편성계+=b.편성계; T.등록계+=b.등록계; T.미납+=b.미납;
+    T.편성계+=b.편성계; T.등록계+=b.등록계; T.미납+=(b.미납||0);
     T.전일편성+=(b.전일편성||0); T.전일등록+=(b.전일등록||0);
   }
+
+  // 미납 소계는 반별 합이 아니라 경영지원 총계를 그대로 쓴다(반 매칭 실패분이 소계에서 빠지지 않도록)
+  if(SBU) T.미납 = SBU.총계;
+
+  // 미납 표시: 명단 모드인데 경영지원 값을 못 가져왔으면 숫자 대신 '—'
+  const _unpaidNA = !!(R._roster && !SBU);
+  const _unpaidTxt = _unpaidNA ? '—' : String(T.미납<0?0:T.미납);
 
   // 히어로 — 두 축 요약
   document.getElementById('heroTitle').innerHTML=`${R.base||'(날짜 미정)'} <span class="grad">${R.season}시즌</span>`;
@@ -1688,13 +1740,13 @@ async function renderDash(){
     `<div class="hp">총인원<b>${T.편성계}</b></div>`+
     `<div class="hp">재등록<b>${T.재등록}</b></div>`+
     `<div class="hp">등록계<b>${_live0?'…':T.등록계}</b></div>`+
-    `<div class="hp">미납<b>${_live0?'…':(T.미납<0?0:T.미납)}</b></div>`;
+    `<div class="hp">미납<b>${_live0?'…':_unpaidTxt}</b></div>`;
   document.getElementById('statTiles').innerHTML=`
     ${tile('g',T.신규,`신규 (남${T.신규남}/여${T.신규여})`)}
     ${tile('r',T.퇴소,`퇴소 (남${T.퇴소남}/여${T.퇴소여})`)}
     ${tile('t',T.편성계,'편성계')}
     ${tile('y',T.재등록,`재등록 (남${T.재등록남}/여${T.재등록여})`)}
-    ${tile('',T.미납<0?0:T.미납,'미납(미등록)')}`;
+    ${tile('',_unpaidTxt,'미납(미등록)')}`;
 
   // ── 원장님 보고 (일자별누적) ──
   const 금일등록=T.신규, 금일환불=T.퇴소;   // 원장님 보고: 순증 기준 = 신규(편입)
@@ -1784,12 +1836,12 @@ async function renderDash(){
       <td class="mono">${((b.재등록||0)+Math.max(0,b.배정등록||0))||''}</td>
       <td class="mono">${((b.재등록환불||0)+Math.max(0,-(b.배정등록||0)))?'-'+((b.재등록환불||0)+Math.max(0,-(b.배정등록||0))):''}</td>
       <td class="mono">${isLive?'':'<b>'+b.등록계+'</b>'}</td>
-      <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':'<b>'+b.미납+'</b>'}</td></tr>`);
+      <td class="mono ${!isLive&&b.미납>0?'neg':''}">${isLive?'':(b.미납==null?'—':'<b>'+b.미납+'</b>')}</td></tr>`);
   }
   const mvRIn =Object.values(R.perBan).reduce((a,b)=>a+Math.max(0, b.배정등록||0),0);
   const mvROut=Object.values(R.perBan).reduce((a,b)=>a+Math.max(0,-(b.배정등록||0)),0);
   const soRegTot = isLive?`<span id="sbRereg">…</span>`:`<b>${T.등록계}</b>`;
-  const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:`<b>${T.미납}</b>`;
+  const soUnpaid = isLive?`<span id="sbUnpaid">…</span>`:(_unpaidNA?'—':`<b>${T.미납}</b>`);
   r2.push(`<tr class="tot"><td>소계</td>
     <td class="mono">${isLive?'':(R._noPrev?'–':T.전일등록)}</td><td class="mono">${T.재등록+mvRIn}</td><td class="mono">${(T.재등록환불+mvROut)?'-'+(T.재등록환불+mvROut):'0'}</td><td class="mono">${soRegTot}</td>
     <td class="mono">${soUnpaid}</td></tr>`);
@@ -1978,10 +2030,11 @@ async function saveDaily(){
   try{
     await setDoc(doc(db,COL('daily'),dayKey(R.base,R.season)),payload);
     // 그날 raw 6블록도 누적 로그에 저장(지난 등록 보기 자동 누적)
-    if(R.season!=='반수'){ await saveRawlogDay(R.base, rawRows()); }
-    // 분석용 원장님 보고 한 점 자동 축적
-    if(R.season!=='반수'){ await accumulateAnalysisPoint(R); }
-    toast('✅ Firebase 저장 완료(공유)');
+    // ⚠ 윈터는 접수대장 기반 파서가 아직 없어 rawRows()(정규 6블록)를 쓰면 안 된다. 연결 전까지 저장 보류.
+    const _skipRaw = (R.season==='반수' || R.season==='윈터');
+    if(!_skipRaw){ await saveRawlogDay(R.base, rawRows()); }
+    if(!_skipRaw){ await accumulateAnalysisPoint(R); }
+    toast(R.season==='윈터' ? '✅ 저장 완료 — 윈터는 누적 로그 미연결(집계만 저장됨)' : '✅ Firebase 저장 완료(공유)');
   }catch(e){
     console.error(e);
     toast('⚠ Firebase 저장 실패: '+(e.code||e.message)+' (로컬엔 저장됨)');
@@ -2000,7 +2053,7 @@ const unpackRows = arr => Array.isArray(arr) ? arr.map(x => typeof x==='string' 
 // 그날 raw 행들을 누적 로그에 저장(덮어쓰기)
 async function saveRawlogDay(date, rows){
   if(!date||!fbReady) return;
-  try{ await setDoc(doc(db,COL('rawlog'),date), { date, rows:packRows(rows), savedAt:Date.now() });
+  try{ await setDoc(doc(db,COL('rawlog'),RLID(date)), { date, rows:packRows(rows), savedAt:Date.now() });
     HIST.byDate=HIST.byDate||{}; HIST.byDate[date]={rows, writer:''};
     HIST.dates=Object.keys(HIST.byDate).sort();
     _rlcSave(HIST.byDate, _dstr(new Date()));
@@ -2009,16 +2062,25 @@ async function saveRawlogDay(date, rows){
 // 전체 누적 로그 읽어 HIST 구성
 // Firestore 읽기 절약: 확정된 과거 날짜는 localStorage 캐시에서, 최근 며칠만 새로 조회.
 // (저장은 그대로 Firestore → 팀 공유 유지)
-const RLC=()=>LK('rawlogcache');
+// 시즌별 rawlog 분리 — 정규는 기존 그대로(날짜), 윈터만 'winter_' 접두어.
+// 반수는 rawlog를 저장하지 않으므로 대상 아님. 마이그레이션 없음.
+function _seasonNow(){ const el=document.getElementById('season'); return el?el.value:'정규'; }
+function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
+function RLID(date, season){ return RLPFX(season)+date; }
+const RLC=()=>LK('rawlogcache'+(RLPFX()?'_winter':''));
 function _rlcLoad(){ try{ const j=JSON.parse(localStorage.getItem(RLC())||'null');
   return (j&&j.byDate)?j:null; }catch(e){ return null; } }
-function _rlcSave(byDate, through){ try{
-  localStorage.setItem(RLC(), JSON.stringify({byDate, through})); }catch(e){} }
+// full: 전량 조회로 만들어진 캐시인지. false/없음이면 다음 로드에서 전량 재조회한다.
+// (과거분이 비어 있는 캐시가 'through=오늘'로 굳어 과거를 영영 못 보던 문제 방지)
+function _rlcSave(byDate, through, full){ try{
+  if(!byDate || !Object.keys(byDate).length) return;
+  localStorage.setItem(RLC(), JSON.stringify({byDate, through, full:!!full})); }catch(e){} }
 function _dstr(d){ return d.toISOString().slice(0,10); }
 
 async function loadRawlogAll(force){
   if(!fbReady) return false;
-  const cache=force?null:_rlcLoad();
+  let cache=force?null:_rlcLoad();
+  if(cache && cache.full!==true) cache=null;   // 불완전한 캐시는 버리고 전량 재조회
   try{
     let byDate;
     if(cache){
@@ -2030,7 +2092,7 @@ async function loadRawlogAll(force){
       const y=new Date(today); y.setDate(y.getDate()-1);
       [_dstr(y), _dstr(today)].forEach(d=>{ if(need.indexOf(d)<0) need.push(d); });
       for(const d of need){
-        try{ const sn=await getDoc(doc(db,COL('rawlog'),d));
+        try{ const sn=await getDoc(doc(db,COL('rawlog'),RLID(d)));
           if(sn.exists()){ const v=sn.data();
             if(v&&Array.isArray(v.rows)) byDate[d]={rows:unpackRows(v.rows), writer:''}; }
         }catch(e){}
@@ -2039,11 +2101,17 @@ async function loadRawlogAll(force){
       // 캐시 없음 → 최초 1회 전량 조회
       const snap=await getDocs(collection(db,COL('rawlog')));
       byDate={};
-      snap.forEach(d=>{ const v=d.data(); if(v&&Array.isArray(v.rows)) byDate[v.date||d.id]={rows:unpackRows(v.rows), writer:''}; });
+      const pfx=RLPFX();
+      snap.forEach(sn=>{ const id=sn.id;
+        if(pfx){ if(id.indexOf(pfx)!==0) return; }        // 윈터: 접두어 있는 것만
+        else if(id.indexOf('_')>=0) return;                // 정규: 다른 시즌 문서 제외
+        const v=sn.data(); if(!v||!Array.isArray(v.rows)) return;
+        const key = pfx ? id.slice(pfx.length) : (v.date||id);
+        byDate[key]={rows:unpackRows(v.rows), writer:''}; });
     }
     if(Object.keys(byDate).length){
       HIST.byDate=byDate; HIST.dates=Object.keys(byDate).sort();
-      _rlcSave(byDate, _dstr(new Date()));
+      _rlcSave(byDate, _dstr(new Date()), true);   // 여기까지 왔으면 전량 조회분이거나 전량 기반 캐시
       refreshHistUI(); return true;
     }
   }catch(e){ console.error('rawlog 로드 실패', e); }
@@ -2056,7 +2124,7 @@ async function importRawlogToFirebase(byDate){
   try{
     let batch=writeBatch(db), n=0;
     for(const d of dates){
-      batch.set(doc(db,COL('rawlog'),d), { date:d, rows:packRows(byDate[d].rows), savedAt:Date.now() });
+      batch.set(doc(db,COL('rawlog'),RLID(d)), { date:d, rows:packRows(byDate[d].rows), savedAt:Date.now() });
       if(++n%400===0){ await batch.commit(); batch=writeBatch(db); }
     }
     await batch.commit();
@@ -2552,7 +2620,13 @@ document.getElementById('gsLoadBtn').onclick=async()=>{
   }
 };
 document.getElementById('baseDate').addEventListener('change',updateSplitTag);
-document.getElementById('season').addEventListener('change',updateSplitTag);
+document.getElementById('season').addEventListener('change',async()=>{
+  updateSplitTag();
+  // 시즌마다 rawlog 네임스페이스와 캐시가 다르므로 다시 읽는다
+  HIST.byDate={}; HIST.dates=[];
+  try{ await loadRawlogAll(); }catch(e){ console.error(e); }
+  refreshHistUI();
+});
 
 /* ===================================================================
  * 9-1) 지난 등록 보기 — raw 로그(2026raw정규) CSV/엑셀에서 날짜별 재구성
