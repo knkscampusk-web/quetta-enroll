@@ -499,23 +499,29 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div class="card">
     <h3><span class="pin"></span> 개강일 & 코호트</h3>
     <div class="row">
-      <div class="field"><label>정규 개강일</label><input type="date" id="cfgOpenReg"></div>
-      <div class="field"><label>반수 개강일</label><input type="date" id="cfgOpenBan"></div>
-      <div class="field"><label>윈터 개강일</label><input type="date" id="cfgOpenWin"></div>
+      <div class="field" data-season-only="정규"><label>정규 개강일</label><input type="date" id="cfgOpenReg"></div>
+      <div class="field" data-season-only="반수"><label>반수 개강일</label><input type="date" id="cfgOpenBan"></div>
+      <div class="field" data-season-only="윈터"><label>윈터 개강일</label><input type="date" id="cfgOpenWin"></div>
       <div class="field"><label>기본 작성자</label><input id="cfgWriter" placeholder="이름"></div>
       <button class="btn pri" id="cfgSaveBtn">설정 저장(공유)</button>
     </div>
     <div class="note">개강일 기준으로 보고가 개강 전/후로 갈립니다. 매년 바뀌면 여기서 바꾸세요.</div>
-    <div class="row" style="margin-top:16px">
+    <div class="row" style="margin-top:16px" data-season-only="정규,반수">
       <div class="field" style="flex:1;min-width:280px">
         <label>반 목록 (개강 후 · 쉼표로 구분, 이 순서대로 항상 출력)</label>
         <input id="cfgBanList" placeholder="A, X, I, O, M, K, N, D, S">
       </div>
     </div>
-    <div class="row" style="margin-top:10px">
+    <div class="row" style="margin-top:10px" data-season-only="정규,반수">
       <div class="field" style="flex:1;min-width:280px">
         <label>전형 목록 (개강 전 · 쉼표로 구분, 이 순서대로 항상 출력)</label>
         <input id="cfgJhList" placeholder="우선선발 전형, 선착순 전형, 수학만 전형, 특별 전형, 유시험 전형, 장학퀀텀_0T, ...">
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px" data-season-only="윈터">
+      <div class="field" style="flex:1;min-width:280px">
+        <label>과정 목록 (쉼표로 구분, 이 순서대로 항상 출력)</label>
+        <input id="cfgCourseList" placeholder="고1 과정, 고2 과정">
       </div>
     </div>
     <div class="note">등록·환불이 없는 반/전형도 raw에 항상 0으로 출력됩니다. 비워두면 그날 자료에 등장한 항목만 출력해요.</div>
@@ -2111,6 +2117,10 @@ function setSeason(s){
   sessionStorage.setItem(LK('season'), s);
   const sel=document.getElementById('season'); if(sel) sel.value=s;
   const bd=document.getElementById('seasonBadge'); if(bd) bd.textContent=s+'시즌';
+  // 시즌 전용 항목만 보이게 (data-season-only)
+  document.querySelectorAll('[data-season-only]').forEach(el=>{
+    el.style.display = el.dataset.seasonOnly.split(',').indexOf(s)>=0 ? '' : 'none';
+  });
 }
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
 function RLID(date, season){ return RLPFX(season)+date; }
@@ -2199,13 +2209,18 @@ document.getElementById('loadPrevBtn').onclick=()=>renderDash();
  * =================================================================== */
 let CFG={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],billMonth:null,baselines:{}};
 const parseList = s => (s||'').split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
+const CFG_DEFAULT={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],courseList:[],billMonth:null,baselines:{},jangMap:{}};
 async function loadCfg(){
+  // 시즌을 바꾸면 이전 시즌 값이 남지 않도록 먼저 초기화한다.
+  // (없으면 윈터에 정규 설정이 그대로 보인다)
+  CFG=JSON.parse(JSON.stringify(CFG_DEFAULT));
   let c=null;
   if(fbReady){ try{ const s=await getDoc(doc(db,COL('config'),NSID('app'))); if(s.exists()) c=s.data(); }catch(e){} }
   if(!c){ try{ c=JSON.parse(localStorage.getItem(LK('cfg')+(RLPFX()?'_winter':''))||'null'); }catch(e){} }
   if(c){ CFG={...CFG,...c}; }
   if(!Array.isArray(CFG.banList)) CFG.banList=[];
   if(!Array.isArray(CFG.jhList)) CFG.jhList=[];
+  if(!Array.isArray(CFG.courseList)) CFG.courseList=[];
   if(typeof CFG.baselines!=='object'||!CFG.baselines) CFG.baselines={};
   if(typeof CFG.jangMap!=='object'||!CFG.jangMap) CFG.jangMap={};
   document.getElementById('cfgOpenReg').value=CFG.openReg||'';
@@ -2214,6 +2229,7 @@ async function loadCfg(){
   document.getElementById('cfgWriter').value=CFG.writer||'';
   document.getElementById('cfgBanList').value=(CFG.banList||[]).join(', ');
   document.getElementById('cfgJhList').value=(CFG.jhList||[]).join(', ');
+  document.getElementById('cfgCourseList').value=(CFG.courseList||[]).join(', ');
   document.getElementById('cfgBillMonth').value=CFG.billMonth||'';
   syncBaselineFields();
   renderJangRows();
@@ -2240,6 +2256,7 @@ document.getElementById('cfgSaveBtn').onclick=async()=>{
   CFG.writer=document.getElementById('cfgWriter').value;
   CFG.banList=parseList(document.getElementById('cfgBanList').value);
   CFG.jhList=parseList(document.getElementById('cfgJhList').value);
+  CFG.courseList=parseList(document.getElementById('cfgCourseList').value);
   localStorage.setItem(LK('cfg')+(RLPFX()?'_winter':''),JSON.stringify(CFG));
   if(CFG.writer) document.getElementById('writer').value=CFG.writer;
   updateSplitTag();
