@@ -253,7 +253,6 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <button data-tab="input" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>일일명단 입력</button>
   <button data-tab="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>대시보드</button>
   <button data-tab="hist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>지난 등록 보기</button>
-  <button data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>분석</button>
 </nav>
 
 <main>
@@ -424,57 +423,18 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 </section>
 
 <!-- ===== 분석 ===== -->
-<section class="tab" id="tab-analysis">
-  <div class="card">
-    <h3><span class="pin"></span> 등록/환불 추이 분석 — 전년 동기 비교</h3>
-    <div class="row" style="margin-top:4px;align-items:center;gap:14px;flex-wrap:wrap">
-      <div class="field"><label>지표</label>
-        <select id="anMetric">
-          <option value="금일등록">금일 등록</option>
-          <option value="금일환불">금일 환불</option>
-          <option value="등록인원">등록인원(누적)</option>
-          <option value="cumReg">등록 누적합</option>
-          <option value="cumRef">환불 누적합</option>
-        </select>
-      </div>
-      <div class="field"><label>X축</label>
-        <select id="anAxis"><option value="dday">개강 D-day</option><option value="cal">달력 날짜</option><option value="evt">이벤트 기준</option></select>
-      </div>
-      <div class="field" id="anEvtWrap" style="display:none"><label>이벤트</label>
-        <select id="anEvent"></select>
-      </div>
-      <div class="field" id="anRangeWrap"><label>구간(월)</label>
-        <select id="anRange"><option value="0" selected>전체</option><option value="1">1개월</option><option value="3">3개월</option><option value="6">6개월</option></select>
-      </div>
-      <div class="field"><label>D+ 조회</label>
-        <div class="row" style="gap:6px;align-items:center">
-          <input id="anDdayIn" type="number" placeholder="예: 100" style="width:90px">
-          <button class="btn" id="anDdayBtn">보기</button>
-        </div>
-      </div>
-    </div>
-    <div id="anDdayOut" style="margin-top:10px"></div>
-    <div id="anChart" style="margin-top:16px"></div>
-    <div id="anCompare" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px"></div>
-    <div class="note" id="anLegend" style="margin-top:8px"></div>
-  </div>
-
-  <div class="card" id="memoCard">
-    <h3><span class="pin"></span> 이벤트 메모 (변화 요인 기록)</h3>
-    <div class="desc">등록/환불에 영향 준 이벤트를 날짜와 함께 남기면, 그래프에 보라 점선 마커로 표시돼 팀·원장님이 함께 봅니다. (예: 경쟁업체 개강, 설명회, 시험일)</div>
-    <div class="row" id="memoInputRow" style="align-items:center;gap:10px;flex-wrap:wrap">
-      <input type="date" id="memoDate" style="width:170px">
-      <input type="text" id="memoText" placeholder="이벤트 내용 (예: 경쟁업체 개강)" style="flex:1;min-width:200px">
-      <button class="btn pri" id="memoAddBtn">메모 추가</button>
-    </div>
-    <div class="note" id="memoNote" style="margin-top:6px"></div>
-    <div id="memoList" style="margin-top:12px"></div>
-  </div>
-</section>
 
 <!-- ===== 설정 ===== -->
 <section class="tab" id="tab-set">
   <button class="backbtn" id="setBack">← 대시보드로 돌아가기</button>
+  <div class="card" data-season-only="윈터">
+    <h3><span class="pin"></span> 윈터 접수대장 연결 테스트</h3>
+    <div class="desc">접수대장을 읽어오기만 합니다. 시트에 아무것도 쓰지 않아요.</div>
+    <div class="row" style="margin-top:12px;align-items:center">
+      <button class="btn pri" id="winTestBtn">연결 테스트</button>
+      <span class="note" id="winTestOut"></span>
+    </div>
+  </div>
   <div class="card">
     <h3><span class="pin"></span> 지난 등록 로그 업로드</h3>
     <div class="desc" id="histUpDesc"></div>
@@ -485,16 +445,6 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       </label>
     </div>
     <div class="note" id="histNote2"></div>
-  </div>
-  <div class="card">
-    <h3><span class="pin"></span> 분석용 자료 업로드 (작년 raw 로그)</h3>
-    <div class="desc" id="anUpDesc"></div>
-    <div class="row" id="anUploadRow">
-      <label class="drop" id="dropRep" style="flex:1">
-        <input type="file" id="fileRep" accept=".csv,.xlsx,.xls" multiple hidden>
-        <div><b>일자별누적 파일 올리기</b><br><span class="note" id="repNames">CSV 또는 엑셀 · 여러 개 한 번에 가능</span></div>
-      </label>
-    </div>
   </div>
   <div class="card">
     <h3><span class="pin"></span> 개강일 & 코호트</h3>
@@ -633,32 +583,41 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwE0SZFC9D7glTjpOKQN-E9OoDXv7LP8rxQgz155uRklPEWBEs_uMfF3aKbpCaddfiuUA/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
-// 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
-async function writeEnroll(rows, writer, receipt, jang){
+// 쓰기 공통 — 응답을 텍스트로 먼저 받는다.
+// Apps Script POST는 302 리디렉션을 거치는데, 그 끝에서 JSON 대신 구글 안내 HTML이
+// 돌아오는 경우가 있다(시트 작업은 끝났는데 앱만 실패로 보이는 상황).
+// res.json()을 바로 부르면 'Unexpected token <'만 남고 원인이 안 보이므로 원문을 노출한다.
+async function gsPost(payload, label){
   const res=await fetch(GS_URL, { method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'enroll', rows, writer, receipt, jang }) });
-  const j=await res.json();
+    body: JSON.stringify(Object.assign({ token:GS_WRITE_TOKEN }, payload)) });
+  const t=await res.text();
+  let j=null;
+  try{ j=JSON.parse(t); }
+  catch(e){
+    const head=String(t||'').replace(/\s+/g,' ').trim().slice(0,200);
+    const html=/^</.test(head);
+    throw new Error(
+      `서버가 JSON이 아닌 응답을 보냈습니다 (HTTP ${res.status}${res.redirected?', 리디렉션됨':''})` +
+      (html ? ' — HTML 페이지입니다. 구글 로그인/권한 안내이거나 네트워크 중간에서 끼어든 페이지일 수 있어요.' : '') +
+      `\n응답 앞부분: ${head}` +
+      (label ? `\n(요청: ${label} — 시트 작업은 이미 끝났을 수 있으니 시트를 먼저 확인하세요)` : ''));
+  }
   if(j.error) throw new Error(j.error);
   return j;
 }
+// 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
+async function writeEnroll(rows, writer, receipt, jang){
+  return gsPost({ action:'enroll', rows, writer, receipt, jang }, '개강후 기입');
+}
 // 환불자 이동: 학생명단 행 → 환불 시트 이동 후 삭제 (퇴소일=기준일)
+// 수험번호로 행을 특정하므로 재시도해도 중복 이동은 없다(이미 삭제됐으면 notFound로 빠짐).
 async function moveRefunders(wy, wm, wd, sids){
-  const res=await fetch(GS_URL, { method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, action:'refund', wy, wm, wd, sids }) });
-  const j=await res.json();
-  if(j.error) throw new Error(j.error);
-  return j; // {moved[], notFound[]}
+  return gsPost({ action:'refund', wy, wm, wd, sids }, '환불자 이동'); // {moved[], notFound[]}
 }
 // 학생명단 정규N월 칸(month)에 기준일(wy/wm/wd) 기입 (빈 칸만, 수험번호 매칭)
 async function writeRosterDates(month, wy, wm, wd, sids){
-  const res=await fetch(GS_URL, { method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ token:GS_WRITE_TOKEN, month, wy, wm, wd, sids }) });
-  const j=await res.json();
-  if(j.error) throw new Error(j.error);
-  return j; // {written[], skipped[], notFound[]}
+  return gsPost({ month, wy, wm, wd, sids }, '재등록일 기입'); // {written[], skipped[], notFound[]}
 }
 async function fetchSheet(which, tries){
   const max=tries||3; let last='';
@@ -811,7 +770,7 @@ async function setGateHash(h){
 document.getElementById('gateBtn').onclick = enterGate;
 document.getElementById('gatePw').addEventListener('keydown',e=>{ if(e.key==='Enter') enterGate(); });
 document.getElementById('setupLink').onclick = ()=>{ setRole('staff'); openApp(); switchTab('set'); };
-document.getElementById('roleViewer').onclick = ()=>{ setRole('viewer'); sessionStorage.setItem(LK('in'),'1'); PENDING_TAB='analysis'; openApp(); };
+document.getElementById('roleViewer').onclick = ()=>{ setRole('viewer'); sessionStorage.setItem(LK('in'),'1'); PENDING_TAB='hist'; openApp(); };
 document.getElementById('roleStaff').onclick = ()=>{ document.getElementById('gateRole').style.display='none'; document.getElementById('gatePwStep').style.display='block'; document.getElementById('gatePw').focus(); };
 document.getElementById('roleBack').onclick = ()=>{ document.getElementById('gatePwStep').style.display='none'; document.getElementById('gateRole').style.display='block'; document.getElementById('gateErr').textContent=''; };
 
@@ -819,13 +778,11 @@ function setRole(r){ sessionStorage.setItem(LK('role'), r); applyRole(r); }
 function currentRole(){ return sessionStorage.getItem(LK('role'))||'staff'; }
 function applyRole(role){
   const viewer = role==='viewer';
-  const viewerTabs = ['dash','analysis','hist'];
+  const viewerTabs = ['dash','hist'];
   document.querySelectorAll('nav button').forEach(b=>{
     b.style.display = (viewer && !viewerTabs.includes(b.dataset.tab)) ? 'none' : '';
   });
   const fab=document.getElementById('settingsFab'); if(fab) fab.style.display = viewer ? 'none' : '';
-  const up=document.getElementById('anUploadRow'); if(up) up.style.display = viewer ? 'none' : '';
-  const mi=document.getElementById('memoInputRow'); if(mi) mi.style.display = viewer ? 'none' : '';
 }
 
 async function enterGate(){
@@ -836,7 +793,7 @@ async function enterGate(){
   if(await sha256(pw)===stored){ setRole('staff'); sessionStorage.setItem(LK('in'),'1'); openApp(); }
   else err.textContent='비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
 }
-// 로그인 후 시즌 선택 단계. 시즌마다 rawlog·analysis·설정 네임스페이스가 달라
+// 로그인 후 시즌 선택 단계. 시즌마다 rawlog·설정 네임스페이스가 달라
 // 세션 시작 시 한 번 정하고, 바꿀 때도 이 화면으로 돌아온다.
 let PENDING_TAB=null;
 function showSeasonStep(){
@@ -853,7 +810,6 @@ async function enterSeason(sn){
   document.getElementById('app').style.display='block';
   applyRole(currentRole());
   // 시즌별 설정·누적 로그를 다시 읽는다
-  AN.series={}; AN.memos=[];
   HIST.byDate={}; HIST.dates=[];
   try{ await loadCfg(); }catch(e){ console.error(e); }
   try{ await loadRawlogAll(); }catch(e){ console.error(e); }
@@ -870,412 +826,11 @@ document.getElementById('seasonChange').onclick=()=>showSeasonStep();
 function switchTab(name){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
-  if(name==='analysis'){ (async()=>{ if(!Object.keys(AN.series).length) await loadAnalysisAll(); seriesFromRawlog(); drawAnalysis(); })(); }
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 document.getElementById('settingsFab').onclick=()=>switchTab('set');
 document.getElementById('setBack').onclick=()=>switchTab('dash');
 
-/* ===================================================================
- * 분석 — 일자별누적 전년 동기 비교
- * =================================================================== */
-const AN={ series:{}, memos:[] }; // series:{year:[...]}, memos:[{year,mo,dy,text,id}]
-const AN_COLORS={2025:'#7E8CC6',2026:'#00B2BE',2024:'#E5943A',2027:'#C0577B'};
-// 연도별 개강일 (D-day 기준) — MM-DD
-const OPEN_DATES={2025:'02-16',2026:'02-19'};
-function ddayOf(year, mo, dy){
-  const od=OPEN_DATES[year]; if(!od) return null;
-  const [om,odd]=od.split('-').map(Number);
-  const d=new Date(Date.UTC(+year,mo-1,dy)), o=new Date(Date.UTC(+year,om-1,odd));
-  return Math.round((d-o)/86400000);
-}
-// raw(2026raw정규 형식) → 연도별 일별 시계열 {금일등록=신규, 금일환불=-퇴소, 재등록, 등록인원(누적)}
-function parseRawToSeries(rows){
-  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
-  if(hi<0) return null;
-  // ⚠ 헤더에 '날짜'·'전형'이 두 번 등장(우측 피벗 보조표). 반드시 '먼저 나온 열' 선점.
-  const H={}; rows[hi].forEach((h,i)=>{ const k=String(h).trim(); if(k&&H[k]==null) H[k]=i; });
-  const ci={날짜:H['날짜'], 구분:H['구분'], 등록:H['등록'], 환불:H['환불'], 접수:H['접수']};
-  if(ci.구분==null||ci.등록==null) return null;
-  const n=x=>{ const v=parseInt(String(x).replace(/[^\-0-9]/g,'')); return isNaN(v)?0:v; };
-  const byDate={}; let year=null; let seen=0, used=0;
-  const gbSet={};
-  for(const r of rows.slice(hi+1)){
-    const draw=String(r[ci.날짜]||'').trim(); if(!draw) continue;
-    seen++;
-    const m=draw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})|(\d{1,2})\/(\d{1,2})/);
-    if(!m) continue;
-    let yy,mo,dy;
-    if(m[1]){ yy=+m[1]; mo=+m[2]; dy=+m[3]; } else { mo=+m[4]; dy=+m[5]; }
-    if(yy) year=year||yy;
-    used++;
-    const key=`${mo}-${dy}`;
-    const gb=String(r[ci.구분]||'').trim();
-    gbSet[gb]=(gbSet[gb]||0)+1;
-    if(!byDate[key]) byDate[key]={mo,dy,신규:0,퇴소:0,재등록:0,재등록환불:0,개강전등록:0,개강전환불:0,개강전접수:0};
-    const deung=n(r[ci.등록]), hwan=Math.abs(n(r[ci.환불]));
-    const jubsu=ci.접수==null?0:n(r[ci.접수]);
-    if(gb==='개강후'){ byDate[key].신규+=deung; byDate[key].퇴소+=hwan; }
-    else if(gb==='개강전'){ byDate[key].개강전등록+=deung; byDate[key].개강전환불+=hwan; byDate[key].개강전접수+=jubsu; }
-    // 월별 재등록: '3월'~'11월' 전부. (기존엔 '6월'만 잡혀 5,000건 이상 누락됐음)
-    else if(/^\d{1,2}월$/.test(gb)||gb==='재등록'){ byDate[key].재등록+=deung; byDate[key].재등록환불+=hwan; }
-  }
-  const data=Object.values(byDate).sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
-  let cum=0;
-  data.forEach((o,i)=>{ o.idx=i; o.금일등록=o.신규; o.금일환불=-o.퇴소; cum+=o.신규-o.퇴소; o.등록인원=cum; });
-  const peak=data.reduce((a,o)=>o.금일등록>a.금일등록?o:a, {금일등록:0,mo:0,dy:0});
-  const diag={ 날짜열:ci.날짜, 행수:seen, 인식:used, 날짜키:data.length,
-    최대금일등록:`${peak.금일등록} (${peak.mo}/${peak.dy})`,
-    구분:Object.keys(gbSet).join('/') };
-  return { year, data, diag };
-}
-function parseDailyReport(rows){
-  // 제목행에서 연도 인식 [25년…]/[26년…]
-  let year=null;
-  for(const r of rows.slice(0,3)){ const m=String(r[0]||'').match(/\[(\d{2})년/); if(m){ year=2000+ +m[1]; break; } }
-  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
-  if(hi<0) return null;
-  const out=[];
-  for(const r of rows.slice(hi+1)){
-    const d=String(r[0]||'').trim();
-    if(d==='계') break;           // 첫 표 끝 — 이후(반수 등) 무시
-    if(!d) continue;
-    const m=d.match(/(\d{1,2})\/(\d{1,2})/); if(!m) continue;
-    const n=x=>{ const v=parseInt(String(x).replace(/[^\-0-9]/g,'')); return isNaN(v)?0:v; };
-    out.push({mo:+m[1],dy:+m[2],금일등록:n(r[2]),금일환불:n(r[3]),등록인원:n(r[4])});
-  }
-  out.forEach((o,i)=>o.idx=i); // D-day(개강기준 순번)
-  let cr=0,cf=0; out.forEach(o=>{ cr+=o.금일등록; cf+=o.금일환불; o.cumReg=cr; o.cumRef=cf; });
-  return { year, data:out };
-}
-async function loadReportFile(file){
-  let rows;
-  if(/\.(xlsx|xls)$/i.test(file.name)){
-    const buf=await file.arrayBuffer();
-    const wb=XLSX.read(buf,{type:'array'});
-    rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
-  } else {
-    const txt=await file.text();
-    rows=txt.split(/\r?\n/).map(l=>l.split(','));
-  }
-  // 형식 자동 감지: '구분' 열 있으면 raw, 아니면 일자별누적
-  const hi=rows.findIndex(r=>r&&String(r[0]).trim()==='날짜');
-  const isRaw = hi>=0 && rows[hi].some(h=>String(h).trim()==='구분');
-  const p = isRaw ? parseRawToSeries(rows) : parseDailyReport(rows);
-  if(!p){ toast(`${file.name}: 형식 인식 실패`); return; }
-  const yr=p.year||('파일'+Object.keys(AN.series).length);
-  AN.series[yr]=p.data;
-  AN.lastDiag = p.diag ? {file:file.name, year:yr, ...p.diag} : null;
-  if(isRaw) AN.lastImport = await importRawIntoRawlog(rows, hi);   // rawlog까지 덮어쓰기
-  return yr;
-}
-
-// 올린 raw CSV를 날짜별로 쪼개 quettaReg_rawlog/{날짜}에 그대로 덮어쓴다.
-// 지난 등록 보기·전일값이 읽는 곳이 rawlog라, 여기에 넣어야 CSV가 실제로 반영됨.
-async function importRawIntoRawlog(rows, hi){
-  try{
-    const H={}; rows[hi].forEach((h,i)=>{ const k=String(h).trim(); if(k&&H[k]==null) H[k]=i; });
-    if(H['날짜']==null || H['구분']==null) return {ok:0, msg:'날짜/구분 열 없음'};
-    const byDate={};
-    for(const r of rows.slice(hi+1)){
-      const draw=String(r[H['날짜']]||'').trim(); if(!draw) continue;
-      const m=draw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
-      if(!m) continue;
-      const key=`${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
-      const obj={};
-      RAW_COLS.forEach(c=>{ const i=H[c]; obj[c] = (i==null||r[i]==null||r[i]==='') ? '' : r[i]; });
-      obj['날짜']=key;
-      (byDate[key]=byDate[key]||[]).push(RAW_COLS.map(c=>obj[c]));
-    }
-    const dates=Object.keys(byDate).sort();
-    if(!dates.length) return {ok:0, msg:'날짜 인식 0건'};
-    HIST.byDate=HIST.byDate||{};
-    if(fbReady){
-      let batch=writeBatch(db), n=0;
-      for(const d of dates){
-        batch.set(doc(db,COL('rawlog'),RLID(d)), { date:d, rows:packRows(byDate[d]), savedAt:Date.now() });
-        if(++n%400===0){ await batch.commit(); batch=writeBatch(db); }
-      }
-      await batch.commit();
-    }
-    for(const d of dates) HIST.byDate[d]={rows:byDate[d], writer:''};   // 덮어쓰기
-    HIST.dates=Object.keys(HIST.byDate).sort();
-    try{ _rlcSave(HIST.byDate, _dstr(new Date())); }catch(e){}
-    refreshHistUI();
-    return {ok:dates.length, from:dates[0], to:dates[dates.length-1]};
-  }catch(e){ console.error('rawlog 반영 실패', e); return {ok:0, msg:(e.code||e.message||String(e))}; }
-}
-(function wireAnalysis(){
-  const drop=document.getElementById('dropRep'), inp=document.getElementById('fileRep');
-  if(!drop) return;
-  drop.onclick=()=>inp.click();
-  drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};
-  drop.ondragleave=()=>drop.classList.remove('drag');
-  drop.ondrop=async e=>{e.preventDefault();drop.classList.remove('drag'); await handleRepFiles(e.dataTransfer.files);};
-  inp.onchange=async()=>{ await handleRepFiles(inp.files); };
-  ['anMetric','anAxis','anRange','anEvent'].forEach(id=>{ const el=document.getElementById(id); if(el) el.onchange=()=>{
-    const ax=document.getElementById('anAxis').value;
-    document.getElementById('anEvtWrap').style.display = ax==='evt'?'':'none';
-    document.getElementById('anRangeWrap').style.display = ax==='evt'?'none':'';
-    if(ax==='evt') refreshEventOptions();
-    if(id==='anRange'||id==='anAxis'){ AN.focusDD=null;
-      const di=document.getElementById('anDdayIn'); if(di) di.value='';
-      const dout=document.getElementById('anDdayOut'); if(dout) dout.innerHTML=''; }
-    drawAnalysis();
-  };});
-  const _db=document.getElementById('anDdayBtn'); if(_db) _db.onclick=showDdayLookup;
-  const _di=document.getElementById('anDdayIn'); if(_di) _di.onkeydown=e=>{ if(e.key==='Enter') showDdayLookup(); };
-  async function handleRepFiles(files){
-    const names=[];
-    for(const f of files){ const yr=await loadReportFile(f); if(yr){ names.push(yr); await saveAnalysisYear(yr, AN.series[yr]); } }
-    const el=document.getElementById('repNames');
-    let html=`불러온 연도: ${Object.keys(AN.series).join(', ')||'없음'} (공유 저장됨)`;
-    const imp=AN.lastImport;
-    if(imp) html += imp.ok
-      ? `<br><span style="color:var(--teal-ink)">지난 등록 보기에 ${imp.ok}일치 반영 (${imp.from} ~ ${imp.to})</span>`
-      : `<br><span style="color:var(--red)">⚠ 지난 등록 보기 반영 실패 — ${imp.msg||''}</span>`;
-    const d=AN.lastDiag;
-    if(d) html+=`<div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6">`+
-      `진단 · ${d.file} → ${d.year}년 / 날짜열 idx=${d.날짜열} / 날짜있는행 ${d.행수} → 인식 ${d.인식} / 날짜키 ${d.날짜키}개<br>`+
-      `최대 금일등록 = <b style="color:var(--teal-ink)">${d.최대금일등록}</b> · 구분값: ${d.구분}</div>`;
-    el.innerHTML=html;
-    drawAnalysis();
-  }
-  // 이벤트 메모
-  const addBtn=document.getElementById('memoAddBtn');
-  if(addBtn){
-    addBtn.onclick=async()=>{
-      const dv=document.getElementById('memoDate').value, tv=document.getElementById('memoText').value.trim();
-      if(!dv||!tv){ toast('날짜와 내용을 입력하세요'); return; }
-      const [y,mo,dy]=dv.split('-').map(Number);
-      AN.memos=AN.memos||[]; AN.memos.push({year:y,mo,dy,text:tv,id:Date.now()});
-      AN.memos.sort((a,b)=>(a.year-b.year)||(a.mo*100+a.dy)-(b.mo*100+b.dy));
-      await saveMemos(); document.getElementById('memoText').value='';
-      renderMemos(); drawAnalysis(); toast('메모 추가됨');
-    };
-  }
-  renderMemos();
-})();
-function renderMemos(){
-  const box=document.getElementById('memoList'); if(!box) return;
-  const ms=AN.memos||[];
-  if(!ms.length){ box.innerHTML='<div class="note">아직 메모가 없어요.</div>'; return; }
-  box.innerHTML=ms.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">`+
-    `<span style="color:var(--peri-ink);font-weight:700;min-width:82px">${m.year}.${m.mo}.${m.dy}</span>`+
-    `<span style="flex:1">${m.text}</span>`+
-    `<button class="btn" data-memo="${m.id}" style="padding:4px 10px;font-size:13px">삭제</button></div>`).join('');
-  box.querySelectorAll('[data-memo]').forEach(b=>b.onclick=async()=>{
-    AN.memos=(AN.memos||[]).filter(x=>String(x.id)!==b.dataset.memo);
-    await saveMemos(); renderMemos(); drawAnalysis();
-  });
-}
-// 분석 시리즈 Firebase 저장/로드 (뷰어도 파일 없이 보게)
-async function saveAnalysisYear(year, data){
-  if(!fbReady) return;
-  try{ await setDoc(doc(db,COL('analysis'),NSID(String(year))),{year:String(year),data,savedAt:Date.now()}); }catch(e){ console.error(e); }
-}
-async function loadAnalysisAll(){
-  if(!fbReady) return;
-  const _pfx=RLPFX();
-  try{ const snap=await getDocs(collection(db,COL('analysis')));
-    snap.forEach(d=>{
-      // 다른 시즌 문서는 건너뛴다(윈터는 접두어 있는 것만, 정규·반수는 없는 것만)
-      if(_pfx){ if(d.id.indexOf(_pfx)!==0) return; } else if(d.id.indexOf('_')===0 || d.id.indexOf('winter_')===0){ if(d.id!=='_memos') return; }
-      if(d.id===NSID('_memos')){ const v=d.data(); AN.memos=Array.isArray(v.list)?v.list:[]; return; }
-      const v=d.data(); if(v&&Array.isArray(v.data)){ v.data.forEach((o,i)=>o.idx=i); let cr=0,cf=0; v.data.forEach(o=>{cr+=o.금일등록||0;cf+=o.금일환불||0;o.cumReg=cr;o.cumRef=cf;}); AN.series[v.year]=v.data; } });
-  }catch(e){ console.error(e); }
-}
-async function saveMemos(){
-  if(!fbReady){ try{ localStorage.setItem(LK('memos'), JSON.stringify(AN.memos||[])); }catch(e){} return; }
-  try{ await setDoc(doc(db,COL('analysis'),NSID('_memos')),{list:AN.memos||[],savedAt:Date.now()}); }catch(e){ console.error(e); }
-}
-// 올해 원장님 보고 한 점 자동 축적 (현황 저장 시 호출)
-// 올해 시계열은 rawlog(지난 등록 보기 데이터)에서 그때그때 산출한다.
-// 별도 저장·업로드 불필요. 작년은 CSV 업로드분(analysis 컬렉션)을 그대로 사용.
-function seriesFromRawlog(){
-  const dates=(HIST&&HIST.dates)||[];
-  if(!dates.length) return;
-  const byYear={};
-  for(const d of dates){
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || !HIST.byDate[d]) continue;
-    let r=null; try{ r=buildCumulativeResult(d); }catch(e){ continue; }
-    if(!r||!r.perBan) continue;
-    const S=f=>Object.values(r.perBan).reduce((a,b)=>a+(b[f]||0),0);
-    const yr=d.slice(0,4), mo=+d.slice(5,7), dy=+d.slice(8,10);
-    const pop=S('편성계');
-    if(!pop) continue;   // 값 없는 날은 점을 만들지 않는다 (선이 바닥으로 꽂히는 것 방지)
-    (byYear[yr]=byYear[yr]||[]).push({mo,dy,
-      금일등록:S('편입'),        // 원장님 보고와 동일 기준(편입)
-      금일환불:-S('퇴소'),
-      등록인원:pop});           // 인원은 편성 기준
-  }
-  for(const yr in byYear){
-    const arr=byYear[yr].sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
-    let cr=0,cf=0; arr.forEach((o,i)=>{ o.idx=i; cr+=o.금일등록||0; cf+=o.금일환불||0; o.cumReg=cr; o.cumRef=cf; });
-    AN.series[yr]=arr;   // rawlog가 있는 연도는 이쪽이 우선
-  }
-}
-async function accumulateAnalysisPoint(R){
-  if(!fbReady||!R||!R._reportRow) return;
-  const yr=String(new Date(R.base+'T00:00:00').getFullYear());
-  const [mo,dy]=[+R.base.slice(5,7),+R.base.slice(8,10)];
-  const pt={mo,dy,금일등록:R.newc||0,금일환불:-(R.ref||0),등록인원:R._regTotal!=null?R._regTotal:0};
-  // 기존 로드 후 같은 날짜 갱신/추가
-  let data=[];
-  try{ const s=await getDoc(doc(db,COL('analysis'),NSID(yr))); if(s.exists()&&Array.isArray(s.data().data)) data=s.data().data; }catch(e){}
-  const i=data.findIndex(o=>o.mo===mo&&o.dy===dy);
-  if(i>=0) data[i]=pt; else data.push(pt);
-  data.sort((a,b)=>(a.mo*100+a.dy)-(b.mo*100+b.dy));
-  await saveAnalysisYear(yr, data);
-  AN.series[yr]=data;
-}
-const METRIC_LABEL={금일등록:'금일 등록(신규)','금일환불':'금일 환불(퇴소)',등록인원:'등록인원(누적 재원)',cumReg:'등록 누적합',cumRef:'환불 누적합',재등록:'재등록'};
-function ddayToDate(year, dd){ // D-day → 'M/D'
-  const od=OPEN_DATES[year]; if(od==null) return '';
-  const [om,odd]=od.split('-').map(Number);
-  const d=new Date(Date.UTC(+year,om-1,odd)); d.setUTCDate(d.getUTCDate()+dd);
-  return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;
-}
-// 이벤트 메모를 이름(내용)으로 묶어 연도별 날짜 쌍을 만든다.
-// 예: 2025-06-04 '6평' + 2026-06-03 '6평' → {name:'6평', by:{2025:{mo:6,dy:4}, 2026:{mo:6,dy:3}}}
-function eventGroups(){
-  const g={};
-  for(const m of (AN.memos||[])){
-    const t=String(m.text||'').trim(); if(!t||!m.year||!m.mo||!m.dy) continue;
-    (g[t]=g[t]||{name:t, by:{}}).by[String(m.year)]={mo:+m.mo, dy:+m.dy};
-  }
-  return Object.values(g).sort((a,b)=>a.name.localeCompare(b.name));
-}
-function refreshEventOptions(){
-  const sel=document.getElementById('anEvent'); if(!sel) return;
-  const gs=eventGroups(); const cur=sel.value;
-  sel.innerHTML = gs.length
-    ? gs.map(g=>`<option value="${g.name}">${g.name} (${Object.keys(g.by).sort().join('·')})</option>`).join('')
-    : `<option value="">등록된 이벤트 없음</option>`;
-  if(cur && gs.some(g=>g.name===cur)) sel.value=cur;
-}
-// D+N 조회: 각 연도 개강일 + N일 시점의 값을 표로
-function showDdayLookup(){
-  const out=document.getElementById('anDdayOut'); if(!out) return;
-  const n=parseInt(document.getElementById('anDdayIn').value);
-  if(isNaN(n)){ out.innerHTML=''; AN.focusDD=null; drawAnalysis(); return; }
-  AN.focusDD=n;                      // 그래프도 이 지점 중심으로 이동
-  const ax=document.getElementById('anAxis');
-  if(ax.value!=='dday'){ ax.value='dday';
-    document.getElementById('anEvtWrap').style.display='none';
-    document.getElementById('anRangeWrap').style.display=''; }
-  drawAnalysis();
-  const metric=document.getElementById('anMetric').value;
-  const years=Object.keys(AN.series).sort();
-  const rows=years.map(y=>{
-    const dt=ddayToDate(y,n);           // 'M/D' 문자열
-    const hit=(AN.series[y]||[]).find(o=>ddayOf(y,o.mo,o.dy)===n);
-    return {y, date: dt||'-', v: hit?(hit[metric]||0):null};
-  });
-  const base=rows.length>1?rows[0].v:null;
-  out.innerHTML=`<div class="tablewrap"><table>
-    <thead><tr><th>연도</th><th>날짜 (D+${n})</th><th>${METRIC_LABEL[metric]||metric}</th><th>전년 대비</th></tr></thead>
-    <tbody>${rows.map((r,i)=>`<tr><td>${r.y}</td><td>${r.date}</td>
-      <td class="mono"><b>${r.v==null?'—':r.v}</b></td>
-      <td class="mono">${(i>0&&base!=null&&r.v!=null)?((r.v-base>0?'+':'')+(r.v-base)):''}</td></tr>`).join('')}</tbody>
-  </table></div>`;
-}
-function drawAnalysis(){
-  const box=document.getElementById('anChart'); if(!box) return;
-  const years=Object.keys(AN.series).sort();
-  if(!years.length){ box.innerHTML=`<div class="note">분석할 자료가 없어요. 설정에서 작년 raw를 올리거나, 올해 현황을 저장하세요.</div>`;
-    document.getElementById('anCompare').innerHTML=''; document.getElementById('anLegend').innerHTML=''; return; }
-  const metric=document.getElementById('anMetric').value;
-  const axis=document.getElementById('anAxis').value;
-  const range=parseInt(document.getElementById('anRange').value)||0;
-  // 기준 연도(최신)의 오늘 D-day
-  const curYear=years[years.length-1];
-  const curData=AN.series[curYear]||[];
-  const last=curData[curData.length-1];
-  const todayDD=last?ddayOf(curYear,last.mo,last.dy):null;
-  // 시리즈 구성 (D-day 기준 구간 필터)
-  // 이벤트 기준: 각 연도의 해당 이벤트일을 0으로 맞추고 전후 30일만
-  let EVT=null;
-  if(axis==='evt'){
-    const nm=document.getElementById('anEvent').value;
-    EVT=eventGroups().find(g=>g.name===nm)||null;
-    if(!EVT){ box.innerHTML='<div class="note">이벤트를 고르세요. 분석탭 메모에 <b>연도별로 같은 이름</b>으로 등록하면 목록에 나옵니다.</div>';
-      document.getElementById('anCompare').innerHTML=''; document.getElementById('anLegend').innerHTML=''; return; }
-  }
-  const series=years.map(y=>{
-    let d=AN.series[y].map(o=>({...o, dd:ddayOf(y,o.mo,o.dy)}));
-    if(axis==='evt'){
-      const e=EVT.by[y]; if(!e) return { year:y, pts:[] };
-      const e0=e.mo*100+e.dy;
-      const toDays=(mo,dy)=>Math.round((new Date(+y,mo-1,dy)-new Date(+y,e.mo-1,e.dy))/86400000);
-      d=d.map(o=>({...o, ed:toDays(o.mo,o.dy)})).filter(o=>o.ed>=-30&&o.ed<=30);
-      return { year:y, pts:d.map(o=>({ x:o.ed, y:o[metric]||0, mo:o.mo, dy:o.dy, dd:o.dd, ed:o.ed })) };
-    }
-    if(AN.focusDD!=null){ const f=AN.focusDD; d=d.filter(o=>o.dd!=null && o.dd>=f-45 && o.dd<=f+45); }
-    else if(range>0 && todayDD!=null){ const lo=todayDD-range*31; d=d.filter(o=>o.dd!=null && o.dd>=lo && o.dd<=todayDD+3); }
-    return { year:y, pts:d.map(o=>({ x: axis==='dday'?(o.dd??o.idx) : (o.mo*100+o.dy), y:o[metric]||0, mo:o.mo, dy:o.dy, dd:o.dd })) };
-  });
-  const allX=series.flatMap(s=>s.pts.map(p=>p.x));
-  const allY=series.flatMap(s=>s.pts.map(p=>p.y));
-  if(!allX.length){ box.innerHTML='<div class="note">해당 구간에 데이터가 없어요.</div>'; return; }
-  const minX=Math.min(...allX),maxX=Math.max(...allX);
-  let minY=Math.min(0,...allY),maxY=Math.max(...allY,1); if(maxY===minY) maxY=minY+1;
-  const W=920,Hh=430,pad={l:64,r:20,t:24,b:60};
-  const sx=x=>pad.l+(x-minX)/((maxX-minX)||1)*(W-pad.l-pad.r);
-  const sy=y=>Hh-pad.b-(y-minY)/((maxY-minY)||1)*(Hh-pad.t-pad.b);
-  // Y 격자 + 눈금
-  const yticks=5, grid=[];
-  for(let i=0;i<=yticks;i++){ const yv=minY+(maxY-minY)*i/yticks; const yy=sy(yv);
-    grid.push(`<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/><text x="${pad.l-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(yv)}</text>`); }
-  // Y축 라벨
-  const yLabel=`<text x="16" y="${Hh/2}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700" transform="rotate(-90 16 ${Hh/2})">${METRIC_LABEL[metric]||metric}</text>`;
-  // X 눈금 (D-day면 "D+n / M/D" 병기)
-  const xticks=8, xg=[];
-  for(let i=0;i<=xticks;i++){ const xv=Math.round(minX+(maxX-minX)*i/xticks); const xx=sx(xv);
-    let l1,l2='';
-    if(axis==='dday'){ l1=(xv>=0?'D+':'D')+xv; l2=ddayToDate(curYear,xv); }
-    else if(axis==='evt'){ l1=(xv>0?'E+':(xv<0?'E':'E'))+xv; if(xv===0) l1='이벤트일'; }
-    else { l1=`${Math.floor(xv/100)}/${String(Math.abs(xv%100)).padStart(2,'0')}`; }
-    xg.push(`<text x="${xx}" y="${Hh-pad.b+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${l1}</text>`+
-      (l2?`<text x="${xx}" y="${Hh-pad.b+32}" text-anchor="middle" font-size="10" fill="var(--muted)" opacity=".8">${l2}</text>`:'')); }
-  const xLabel=`<text x="${(pad.l+W-pad.r)/2}" y="${Hh-6}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="700">${axis==='dday'?'개강 D-day (개강일=D0)':(axis==='evt'?(EVT?EVT.name+' 기준 전후 30일 (이벤트일=0)':'이벤트 기준'):'달력 날짜')}</text>`;
-  const focusLine = (axis==='dday'&&AN.focusDD!=null&&AN.focusDD>=minX&&AN.focusDD<=maxX)
-    ? `<line x1="${sx(AN.focusDD)}" y1="${pad.t}" x2="${sx(AN.focusDD)}" y2="${Hh-pad.b}" stroke="#e08a2e" stroke-width="1.5" stroke-dasharray="5 4"/>`
-      + `<text x="${sx(AN.focusDD)}" y="${pad.t-6}" text-anchor="middle" font-size="11" fill="#e08a2e" font-weight="700">D+${AN.focusDD}</text>`
-    : '';
-  const zero = minY<0&&maxY>0 ? `<line x1="${pad.l}" y1="${sy(0)}" x2="${W-pad.r}" y2="${sy(0)}" stroke="var(--ink)" stroke-width="1" opacity=".25"/>`:'';
-  const paths=series.map(s=>{ const col=AN_COLORS[s.year]||'#888';
-    const dpath=s.pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
-    return `<path d="${dpath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>`; }).join('');
-  // 오늘 세로선 + 이맘때 비교 + 이벤트 메모 마커
-  let todayLine='', compareHtml='', memoMarks='';
-  if(axis==='dday' && todayDD!=null && todayDD>=minX && todayDD<=maxX){
-    const xx=sx(todayDD);
-    todayLine=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="4 3" opacity=".7"/>`+
-      `<text x="${xx}" y="${pad.t-6}" text-anchor="middle" font-size="11" fill="var(--teal-ink)" font-weight="700">오늘 D+${todayDD}</text>`;
-    const valAt=(y)=>{ const arr=AN.series[y]||[]; let best=null;
-      for(const o of arr){ const od=ddayOf(y,o.mo,o.dy); if(od!=null&&od<=todayDD) best=o[metric]||0; if(od===todayDD) break; } return best; };
-    const cur=valAt(curYear);
-    compareHtml=years.map(y=>{ const v=valAt(y); if(v==null) return '';
-      const col=AN_COLORS[y]||'#888'; let diff='';
-      if(y!==curYear && cur!=null){ const d=cur-v; diff=` <span style="color:${d>=0?'var(--teal-ink)':'var(--red)'}">(${d>=0?'+':''}${d})</span>`; }
-      return `<span style="border:1px solid ${col};color:${col};padding:6px 12px;border-radius:999px;font-weight:700">${y} 이맘때(D+${todayDD}·${ddayToDate(y,todayDD)}) ${v}${diff}</span>`;
-    }).filter(Boolean).join('');
-  }
-  // 이벤트 메모 마커 (기준 연도)
-  for(const m of (AN.memos||[])){
-    if(String(m.year)!==String(curYear)) continue;
-    const dd=ddayOf(curYear,m.mo,m.dy); if(dd==null) continue;
-    const xv= axis==='dday'? dd : (m.mo*100+m.dy);
-    if(xv<minX||xv>maxX) continue; const xx=sx(xv);
-    memoMarks+=`<line x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${Hh-pad.b}" stroke="var(--peri)" stroke-width="1" stroke-dasharray="2 2" opacity=".6"/>`+
-      `<circle cx="${xx}" cy="${pad.t+4}" r="4" fill="var(--peri)"><title>${m.mo}/${m.dy} ${m.text}</title></circle>`;
-  }
-  box.innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto;font-family:Pretendard,sans-serif">${grid.join('')}${yLabel}${xg.join('')}${xLabel}${zero}${memoMarks}${todayLine}${focusLine}${paths}</svg>`;
-  document.getElementById('anCompare').innerHTML=compareHtml;
-  document.getElementById('anLegend').innerHTML='범례: '+series.map(s=>`<span style="color:${AN_COLORS[s.year]||'#888'};font-weight:700">● ${s.year}</span>`).join('  ')+
-    (axis==='dday'?` · 개강일 D0 (2025 2/16 · 2026 2/19) · 보라 점선=이벤트 메모`:' · 달력 날짜');
-}
 
 
 /* ===================================================================
@@ -2079,7 +1634,6 @@ async function saveDaily(){
     // ⚠ 윈터는 접수대장 기반 파서가 아직 없어 rawRows()(정규 6블록)를 쓰면 안 된다. 연결 전까지 저장 보류.
     const _skipRaw = (R.season==='반수' || R.season==='윈터');
     if(!_skipRaw){ await saveRawlogDay(R.base, rawRows()); }
-    if(!_skipRaw){ await accumulateAnalysisPoint(R); }
     toast(R.season==='윈터' ? '✅ 저장 완료 — 윈터는 누적 로그 미연결(집계만 저장됨)' : '✅ Firebase 저장 완료(공유)');
   }catch(e){
     console.error(e);
@@ -2121,13 +1675,11 @@ function rawSheetName(season, year){
 }
 function syncSeasonTexts(s){
   const now=new Date().getFullYear();
-  const cur=rawSheetName(s, now), prev=rawSheetName(s, now-1);
+  const cur=rawSheetName(s, now);
   const d1=document.getElementById('histUpDesc');
   if(d1) d1.textContent = `${cur} 시트를 CSV/엑셀로 올리면, ‘지난 등록 보기’ 탭에서 날짜를 골라 그날 현황을 볼 수 있어요.`;
   const l1=document.getElementById('histUpLabel');
   if(l1) l1.textContent = `raw 로그 업로드 (${cur} CSV/엑셀)`;
-  const d2=document.getElementById('anUpDesc');
-  if(d2) d2.textContent = `작년 raw(${prev}) 자료를 한 번만 올리면 팀 공유(Firebase)에 저장돼, 분석 탭에서 전년 비교로 자동 표시됩니다. 올해 자료는 매일 ‘현황 저장’ 시 자동 축적돼요. 날짜의 연도를 자동 인식합니다.`;
 }
 function setSeason(s){
   SEASON = s;
@@ -2277,6 +1829,19 @@ function syncBaselineFields(){
   document.getElementById('cfgBlUnreg').value = bl.unreg??'';
 }
 document.getElementById('cfgBillMonth').addEventListener('input',syncBaselineFields);
+// 윈터 접수대장 연결 확인 — 읽기만 한다(쓰기 없음)
+const _winBtn=document.getElementById('winTestBtn');
+if(_winBtn) _winBtn.onclick=async()=>{
+  const out=document.getElementById('winTestOut');
+  _winBtn.disabled=true; out.textContent='확인 중…';
+  try{
+    const j=await fetchSheet('winter');
+    const hdr=(j.rows&&j.rows[0])?j.rows[0].filter(x=>String(x||'').trim()).length:0;
+    out.innerHTML = `✅ 연결 성공 — 시트 <b>${j.sheet||'?'}</b> · 데이터 <b>${j.count||0}</b>행 · 열 ${hdr}개`;
+  }catch(e){
+    out.innerHTML = `⚠ 실패 — ${(e.message||String(e)).slice(0,160)}`;
+  }finally{ _winBtn.disabled=false; }
+};
 document.getElementById('cfgSaveBtn').onclick=async()=>{
   CFG.openReg=document.getElementById('cfgOpenReg').value;
   CFG.openBan=document.getElementById('cfgOpenBan').value;
@@ -2315,7 +1880,7 @@ function renderJangRows(){
   wrap.innerHTML=JANG_LIST.map((label,i)=>
     `<div class="row" style="margin-bottom:8px;align-items:center">
       <div class="field" style="flex:1.2"><label>${i+1}. ${label}</label>
-        <input class="jangCode" data-label="${label}" placeholder="예: Q⑥_50 (여러 개는 쉼표)" value="${(CFG.jangMap[label]||[]).join(', ')}">
+        <input class="jangCode" data-label="${label}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="jang_${i}" placeholder="예: Q⑥_50 (여러 개는 쉼표)" value="${(CFG.jangMap[label]||[]).join(', ')}">
       </div>
     </div>`).join('');
 }
@@ -2599,7 +2164,7 @@ document.getElementById('enApplyBtn').onclick=async()=>{
     note.innerHTML=msg;
     toast('✅ 개강후 기입 + raw 누적 완료'); btn.textContent='완료됨';
   }catch(e){ console.error(e);
-    note.innerHTML=`<span style="color:var(--red)">⚠ 기입 실패: ${e.message||e}</span>`;
+    note.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ 기입 실패: ${e.message||e}</span>`;
     btn.disabled=false; btn.textContent='다시 시도';
   }
 };
@@ -2617,7 +2182,7 @@ document.getElementById('wbApplyBtn').onclick=async()=>{
       toast(`✅ ${r.moved.length}명 환불 이동 완료`);
       btn.textContent='완료됨';
     }catch(e){ console.error(e);
-      note.innerHTML=`<span style="color:var(--red)">⚠ 이동 실패: ${e.message||e}</span>`;
+      note.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ 이동 실패: ${e.message||e}</span>`;
       btn.disabled=false; btn.textContent='다시 시도';
     }
     return;
@@ -2638,7 +2203,7 @@ document.getElementById('wbApplyBtn').onclick=async()=>{
     toast(`✅ ${W}명 기입 완료`);
     btn.textContent='완료됨';
   }catch(e){ console.error(e);
-    note.innerHTML=`<span style="color:var(--red)">⚠ 기입 실패: ${e.message||e}</span>`;
+    note.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ 기입 실패: ${e.message||e}</span>`;
     btn.disabled=false; btn.textContent='다시 시도';
   }
 };
