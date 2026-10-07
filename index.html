@@ -1879,9 +1879,19 @@ if(_sbCfgBtn) _sbCfgBtn.onclick=async()=>{
     }).join(' · ');
     note.innerHTML=`✅ 최상위 키 — ${topKeys}`;
     out.style.display='block';
-    out.textContent = st.cfg
-      ? 'cfg =\n' + JSON.stringify(st.cfg, null, 2)
-      : 'cfg 키가 없습니다. 최상위 구조:\n' + JSON.stringify(Object.keys(st), null, 2);
+    // pays 의 '내역' 값 분포 — 윈터 결제가 어떤 문자열로 들어오는지 확인용.
+    // cfg 에는 체크된 기수만 저장되므로, 실제 내역값은 pays 를 봐야 알 수 있다.
+    const pays=Array.isArray(st.pays)?st.pays:[];
+    const cnt={};
+    pays.forEach(p=>{ const k=String(p.내역||'(빈값)'); cnt[k]=(cnt[k]||0)+1; });
+    const list=Object.entries(cnt).sort((a,b)=>b[1]-a[1])
+      .map(([k,v])=>`  ${String(v).padStart(5)}건  ${k}`).join('\n');
+    const win=Object.keys(cnt).filter(k=>/윈터|시즌제로|고1|고2|선금|잔금|완납/.test(k));
+    out.textContent =
+      `[pays 내역 분포] 총 ${pays.length}건 / 서로 다른 값 ${Object.keys(cnt).length}개\n${list}\n\n` +
+      `[윈터로 보이는 값] ${win.length?win.join(' · '):'없음 — 아직 윈터 결제가 들어오지 않았습니다'}\n\n` +
+      (st.cfg ? 'cfg =\n' + JSON.stringify(st.cfg, null, 2)
+              : 'cfg 키 없음. 최상위 구조:\n' + JSON.stringify(Object.keys(st), null, 2));
   }catch(e){
     note.innerHTML=`<span style="color:var(--red)">⚠ 실패: ${e.message||e}</span>`;
   }finally{ _sbCfgBtn.disabled=false; }
