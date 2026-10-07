@@ -602,24 +602,28 @@ let _sbState=null; // 캐시
 const GS_URL   = 'https://script.google.com/macros/s/AKfycbwGobQP8RxtaaUsenXygk4lkCFvlv2vg1RLiUUHp8Dwg-O7ZHOtpg4G9ax8D6_lor33Xw/exec';
 const GS_TOKEN = 'quetta9f3k2xQ';
 const GS_WRITE_TOKEN = 'quettawrite7z9';   // 쓰기 전용 토큰
-// 쓰기 공통 — 응답을 텍스트로 먼저 받는다.
-// Apps Script POST는 302 리디렉션을 거치는데, 그 끝에서 JSON 대신 구글 안내 HTML이
-// 돌아오는 경우가 있다(시트 작업은 끝났는데 앱만 실패로 보이는 상황).
-// res.json()을 바로 부르면 'Unexpected token <'만 남고 원인이 안 보이므로 원문을 노출한다.
-async function gsPost(payload, label){
-  const res=await fetch(GS_URL, { method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify(Object.assign({ token:GS_WRITE_TOKEN }, payload)) });
+// 쓰기 공통 — GET으로 보낸다.
+// POST(/exec → googleusercontent 리디렉션)가 환경에 따라 404/HTML을 돌려줘
+// "시트는 다 써졌는데 앱은 실패" 가 반복됐다. 읽기(GET)는 안정적이라 같은 경로를 쓴다.
+// 본문은 base64(web-safe) JSON 한 덩어리로 실어 한글 URL 인코딩 폭증을 피한다.
+function _b64url(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; bytes.forEach(b=>{ bin+=String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_');
+}
+async function gsWrite(payload, label){
+  const body=JSON.stringify(Object.assign({ token:GS_WRITE_TOKEN }, payload));
+  const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&p=${encodeURIComponent(_b64url(body))}&_t=${Date.now()}`;
+  if(url.length>7500) throw new Error(`요청이 너무 깁니다 (${url.length}자). 건수를 나눠서 보내주세요.`);
+  const res=await fetch(url);
   const t=await res.text();
   let j=null;
   try{ j=JSON.parse(t); }
   catch(e){
     const head=String(t||'').replace(/\s+/g,' ').trim().slice(0,200);
-    const html=/^</.test(head);
     throw new Error(
-      `서버가 JSON이 아닌 응답을 보냈습니다 (HTTP ${res.status}${res.redirected?', 리디렉션됨':''})` +
-      (html ? ' — HTML 페이지입니다. 구글 로그인/권한 안내이거나 네트워크 중간에서 끼어든 페이지일 수 있어요.' : '') +
-      `\n응답 앞부분: ${head}` +
+      `서버가 JSON이 아닌 응답을 보냈습니다 (HTTP ${res.status})` +
+      `\n응답 앞부분: ${head||'(빈 응답)'}` +
       (label ? `\n(요청: ${label} — 시트 작업은 이미 끝났을 수 있으니 시트를 먼저 확인하세요)` : ''));
   }
   if(j.error) throw new Error(j.error);
@@ -627,16 +631,16 @@ async function gsPost(payload, label){
 }
 // 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
 async function writeEnroll(rows, writer, receipt, jang){
-  return gsPost({ action:'enroll', rows, writer, receipt, jang }, '개강후 기입');
+  return gsWrite({ action:'enroll', rows, writer, receipt, jang }, '개강후 기입');
 }
 // 환불자 이동: 학생명단 행 → 환불 시트 이동 후 삭제 (퇴소일=기준일)
 // 수험번호로 행을 특정하므로 재시도해도 중복 이동은 없다(이미 삭제됐으면 notFound로 빠짐).
 async function moveRefunders(wy, wm, wd, sids){
-  return gsPost({ action:'refund', wy, wm, wd, sids }, '환불자 이동'); // {moved[], notFound[]}
+  return gsWrite({ action:'refund', wy, wm, wd, sids }, '환불자 이동'); // {moved[], notFound[]}
 }
 // 학생명단 정규N월 칸(month)에 기준일(wy/wm/wd) 기입 (빈 칸만, 수험번호 매칭)
 async function writeRosterDates(month, wy, wm, wd, sids){
-  return gsPost({ month, wy, wm, wd, sids }, '재등록일 기입'); // {written[], skipped[], notFound[]}
+  return gsWrite({ month, wy, wm, wd, sids }, '재등록일 기입'); // {written[], skipped[], notFound[]}
 }
 async function fetchSheet(which, tries){
   const max=tries||3; let last='';
@@ -1863,7 +1867,7 @@ if(_winRegBtn) _winRegBtn.onclick=async()=>{
   _winRegBtn.disabled=true; out.textContent='기입 중…';
   try{
     const kind=document.getElementById('winRegKind').value;
-    const j=await gsPost({ action:'winterReg', kind, wy, wm, wd, sids }, '윈터 등록 기입');
+    const j=await gsWrite({ action:'winterReg', kind, wy, wm, wd, sids }, '윈터 등록 기입');
     const part=[];
     if(j.written.length)  part.push(`기입 <b>${j.written.length}</b>건 (${j.written.join(', ')})`);
     if(j.skipped.length)  part.push(`쓸 칸 없음(이미 값 있음) ${j.skipped.length}건 (${j.skipped.join(', ')})`);
