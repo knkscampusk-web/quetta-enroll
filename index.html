@@ -438,14 +438,15 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div class="card" data-season-only="윈터">
     <h3><span class="pin"></span> 윈터 등록 기입 (테스트)</h3>
     <div class="desc">수험번호를 적으면 접수등록대장에 기준일을 씁니다 —
-      <b>선금</b>→B열(예비 교습비), <b>잔금</b>→C열(교습비 완납), <b>완납</b>→B·C 둘 다.
+      <b>선금</b>→B열, <b>잔금</b>→C열, <b>완납</b>→B·C 둘 다, <b>환불</b>→D열 + E열 ‘ㅇ’,
+      <b>등록포기</b>→E열 ‘ㅇ’만(결제 내역 없이 등록 안 하겠다고 연락 온 경우).
       값은 날짜로 들어가고 <b>10/13</b> 형태로 보입니다. 이미 값이 있는 칸은 건드리지 않아요.</div>
     <div class="row" style="margin-top:12px;align-items:flex-end">
       <div class="field" style="max-width:190px"><label>기준일</label>
         <input type="date" id="winRegDate">
       </div>
       <div class="field" style="max-width:140px"><label>구분</label>
-        <select id="winRegKind"><option>선금</option><option>잔금</option><option>완납</option></select>
+        <select id="winRegKind"><option>선금</option><option>잔금</option><option>완납</option><option>환불</option><option>등록포기</option></select>
       </div>
       <div class="field" style="flex:1;min-width:260px"><label>수험번호 (쉼표 · 줄바꿈 · 공백 구분)</label>
         <input id="winRegSids" autocomplete="off" placeholder="예: 4002, 4003">
@@ -1872,7 +1873,7 @@ if(_winRegBtn) _winRegBtn.onclick=async()=>{
     if(j.written.length)  part.push(`기입 <b>${j.written.length}</b>건 (${j.written.join(', ')})`);
     if(j.skipped.length)  part.push(`쓸 칸 없음(이미 값 있음) ${j.skipped.length}건 (${j.skipped.join(', ')})`);
     if(j.notFound.length) part.push(`<span style="color:var(--red)">명단에 없음 ${j.notFound.length}건 (${j.notFound.join(', ')})</span>`);
-    out.innerHTML = `✅ ${j.sheet} · <b>${j.kind}</b> · 기입값 <b>${j.date}</b><br>` + part.join('<br>');
+    out.innerHTML = `✅ ${j.sheet} · <b>${j.kind}</b>${j.noIntent?' (E열 ‘ㅇ’ 포함)':''} · 기입값 <b>${j.date}</b><br>` + part.join('<br>');
   }catch(e){
     out.innerHTML = `<span style="color:var(--red);white-space:pre-wrap">⚠ 실패: ${e.message||e}</span>`;
   }finally{ _winRegBtn.disabled=false; }
