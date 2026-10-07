@@ -435,6 +435,21 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
       <span class="note" id="winTestOut"></span>
     </div>
   </div>
+  <div class="card" data-season-only="윈터">
+    <h3><span class="pin"></span> 윈터 등록 기입 (테스트)</h3>
+    <div class="desc">수험번호를 적으면 접수등록대장 <b>B열 ‘예비 교습비’</b>에 기준일을 씁니다.
+      이미 값이 있는 칸은 건드리지 않아요. 되돌리려면 시트에서 그 칸을 지우면 됩니다.</div>
+    <div class="row" style="margin-top:12px;align-items:flex-end">
+      <div class="field" style="max-width:190px"><label>기준일</label>
+        <input type="date" id="winRegDate">
+      </div>
+      <div class="field" style="flex:1;min-width:260px"><label>수험번호 (쉼표 · 줄바꿈 · 공백 구분)</label>
+        <input id="winRegSids" autocomplete="off" placeholder="예: 4002, 4003">
+      </div>
+      <button class="btn pri" id="winRegBtn">기입</button>
+    </div>
+    <div class="note" id="winRegOut" style="white-space:pre-wrap"></div>
+  </div>
   <div class="card">
     <h3><span class="pin"></span> 지난 등록 로그 업로드</h3>
     <div class="desc" id="histUpDesc"></div>
@@ -1829,6 +1844,31 @@ function syncBaselineFields(){
   document.getElementById('cfgBlUnreg').value = bl.unreg??'';
 }
 document.getElementById('cfgBillMonth').addEventListener('input',syncBaselineFields);
+// 윈터 등록 기입 — 접수대장 B열('예비 교습비')에 기준일을 쓴다. 빈 칸에만.
+const _winRegDate=document.getElementById('winRegDate');
+if(_winRegDate) _winRegDate.value=_dstr(new Date());
+const _winRegBtn=document.getElementById('winRegBtn');
+if(_winRegBtn) _winRegBtn.onclick=async()=>{
+  const out=document.getElementById('winRegOut');
+  const raw=document.getElementById('winRegSids').value||'';
+  const sids=raw.split(/[\s,]+/).map(x=>x.trim()).filter(Boolean);
+  if(!sids.length){ out.innerHTML='<span style="color:var(--red)">수험번호를 입력하세요.</span>'; return; }
+  const d=document.getElementById('winRegDate').value;
+  if(!d){ out.innerHTML='<span style="color:var(--red)">기준일을 선택하세요.</span>'; return; }
+  const [wy,wm,wd]=d.split('-').map(Number);
+  _winRegBtn.disabled=true; out.textContent='기입 중…';
+  try{
+    const j=await gsPost({ action:'winterReg', wy, wm, wd, sids }, '윈터 등록 기입');
+    const part=[];
+    if(j.written.length)  part.push(`기입 <b>${j.written.length}</b>건 (${j.written.join(', ')})`);
+    if(j.skipped.length)  part.push(`이미 값 있음 ${j.skipped.length}건 (${j.skipped.join(', ')})`);
+    if(j.notFound.length) part.push(`<span style="color:var(--red)">명단에 없음 ${j.notFound.length}건 (${j.notFound.join(', ')})</span>`);
+    out.innerHTML = `✅ ${j.sheet} · 기입값 <b>${j.date}</b><br>` + part.join('<br>');
+  }catch(e){
+    out.innerHTML = `<span style="color:var(--red);white-space:pre-wrap">⚠ 실패: ${e.message||e}</span>`;
+  }finally{ _winRegBtn.disabled=false; }
+};
+
 // 윈터 접수대장 연결 확인 — 읽기만 한다(쓰기 없음)
 const _winBtn=document.getElementById('winTestBtn');
 if(_winBtn) _winBtn.onclick=async()=>{
