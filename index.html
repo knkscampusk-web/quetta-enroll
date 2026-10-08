@@ -724,7 +724,18 @@ async function sbUnpaidByBan(assign, banList){
 }
 // 경영지원 Supabase에서 그날 일일명단 재구성 (그 앱 exportDailyExcel 로직 재현)
 function _refDateSb(r){ return r.processedDate || (r.processedAt? (d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date(r.processedAt)) : ''); }
+// 내역 문자열에서 시즌·과정·구분을 뽑는다. 예: '[고1]윈터_완납' → {course:'고1 과정', kind:'완납'}
+// 윈터는 하나의 내역 문자열에 과정·시즌·구분이 다 들어 있다(정규는 '정규8기(10월)' 형태).
+function winParseTerm(term){
+  const t=String(term||'');
+  if(!/윈터/.test(t)) return null;
+  const mc=t.match(/\[\s*(고[12])\s*\]/);
+  const mk=t.match(/_\s*([^_\s]+)\s*$/);
+  return { course: mc? mc[1]+' 과정' : '', kind: mk? mk[1] : '' };
+}
+
 async function buildDailyFromSb(date){
+  if(_seasonNow()==='윈터') return buildWinterDailyFromSb(date);
   const st=await loadSbState();
   const pays=Array.isArray(st.pays)?st.pays:[];
   const refunds=Array.isArray(st.refunds)?st.refunds:[];
@@ -745,6 +756,33 @@ async function buildDailyFromSb(date){
   return { reg, ref, fileDate:date };
 }
 
+
+// 윈터 일일명단 — 내역에 '윈터'가 들어간 건만. 정규 기수는 섞이지 않는다.
+// 구분(선금/완납/잔금)은 내역 문자열 끝에서 읽고, 성별은 접수대장에서 수험번호로 맞춘다.
+async function buildWinterDailyFromSb(date){
+  const st=await loadSbState();
+  const pays=Array.isArray(st.pays)?st.pays:[];
+  const refunds=Array.isArray(st.refunds)?st.refunds:[];
+  const dateOf=p=>(p.uploadedDate||p.결제일자);
+
+  const regs=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void' && winParseTerm(p.내역));
+  const refs=[
+    ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0 && winParseTerm(p.내역)),
+    ...refunds.filter(r=>_refDateSb(r)===date && winParseTerm((r.removedTerms||[]).join('/')))
+      .map(r=>({반:r.반,번호:r.번호||'',수험번호:r.수험번호,이름:r.이름,내역:(r.removedTerms||[]).join('/'),장학:r.장학||''}))
+  ];
+
+  const reg=regs.map(p=>{ const w=winParseTerm(p.내역)||{};
+    return { sid:norm(p.수험번호), name:p.이름, ban:p.반, cohort:p.내역,
+             course:w.course, kind:w.kind, jang:p.장학,
+             // 완납전환(잔금)은 이미 선금 때 셌으므로 등록으로 세지 않는다
+             countReg: w.kind!=='잔금' };
+  });
+  const ref=refs.map(r=>{ const w=winParseTerm(r.내역)||{};
+    return { sid:norm(r.수험번호), name:r.이름, cohort:r.내역, course:w.course, kind:w.kind, jang:r.장학 };
+  });
+  return { reg, ref, fileDate:date, winter:true };
+}
 
 async function loadSbState(){
   if(_sbState) return _sbState;
@@ -2025,9 +2063,26 @@ if(_sbCfgBtn) _sbCfgBtn.onclick=async()=>{
     const list=Object.entries(cnt).sort((a,b)=>b[1]-a[1])
       .map(([k,v])=>`  ${String(v).padStart(5)}건  ${k}`).join('\n');
     const win=Object.keys(cnt).filter(k=>/윈터|시즌제로|고1|고2|선금|잔금|완납/.test(k));
+    // 윈터로 보이는 결제 한 건의 필드 구조를 그대로 보여준다(이름·연락처는 가림).
+    const sample=pays.filter(p=>/윈터/.test(String(p.내역||'')));
+    const mask=o=>{
+      const c={};
+      Object.keys(o).forEach(k=>{
+        const v=o[k];
+        if(/성명|이름|연락처|전화|휴대|주소|보호자|email|메일/i.test(k)) c[k]='***';
+        else c[k]=v;
+      });
+      return c;
+    };
+    const sampleTxt = sample.length
+      ? `[윈터 결제 샘플 ${Math.min(3,sample.length)}건 / 총 ${sample.length}건]\n` +
+        sample.slice(0,3).map(p=>JSON.stringify(mask(p),null,2)).join('\n') + '\n\n'
+      : `[윈터 결제 샘플] 내역에 '윈터'가 들어간 건이 없습니다.\n` +
+        (pays.length ? `참고 — 아무 결제 1건의 필드 구조:\n${JSON.stringify(mask(pays[0]),null,2)}\n\n` : '');
     out.textContent =
       `[pays 내역 분포] 총 ${pays.length}건 / 서로 다른 값 ${Object.keys(cnt).length}개\n${list}\n\n` +
       `[윈터로 보이는 값] ${win.length?win.join(' · '):'없음 — 아직 윈터 결제가 들어오지 않았습니다'}\n\n` +
+      sampleTxt +
       (st.cfg ? 'cfg =\n' + JSON.stringify(st.cfg, null, 2)
               : 'cfg 키 없음. 최상위 구조:\n' + JSON.stringify(Object.keys(st), null, 2));
   }catch(e){
