@@ -337,6 +337,29 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="desc">아직 처리된 자료가 없어요. <b>일일명단 입력</b> 탭에서 자료를 올리고 처리하면 여기 결과가 나옵니다.</div>
   </div>
 
+  <div id="winHero" class="hero" style="display:none">
+    <div class="hero-panel" id="winHero1">
+      <div class="hero-panel-label">TODAY · 고1 과정</div>
+      <div class="hero-duo">
+        <div class="hero-stat"><span class="hero-num" id="winHero1Reg">0</span><span class="hero-lab">등록</span></div>
+        <div class="hero-div"></div>
+        <div class="hero-stat"><span class="hero-num" id="winHero1Ref">0</span><span class="hero-lab">환불</span></div>
+      </div>
+      <div class="hero-panel-row" id="winHero1Mini"></div>
+      <span class="hero-mark"></span>
+    </div>
+    <div class="hero-panel" id="winHero2">
+      <div class="hero-panel-label">TODAY · 고2 과정</div>
+      <div class="hero-duo">
+        <div class="hero-stat"><span class="hero-num" id="winHero2Reg">0</span><span class="hero-lab">등록</span></div>
+        <div class="hero-div"></div>
+        <div class="hero-stat"><span class="hero-num" id="winHero2Ref">0</span><span class="hero-lab">환불</span></div>
+      </div>
+      <div class="hero-panel-row" id="winHero2Mini"></div>
+      <span class="hero-mark"></span>
+    </div>
+  </div>
+
   <div class="card" id="winDash" style="display:none">
     <h3 style="justify-content:space-between">
       <span><span class="pin"></span> 윈터 등록현황</span>
@@ -344,8 +367,18 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     </h3>
     <div class="desc">접수는 접수대장, 등록·환불·완납은 경영지원 일일명단 기준입니다. 성별은 수험번호로 접수대장과 맞춥니다.</div>
     <div id="winDashTable" style="margin-top:12px"></div>
+
+    <div class="note" style="font-weight:700;color:var(--ink);margin:18px 0 6px;display:flex;justify-content:space-between;align-items:center">
+      <span>오늘 등록·환불 요약 (일자별등록 시트용)</span>
+      <button class="btn" id="winReportCopyBtn">한 줄 복사</button>
+    </div>
+    <div class="desc">2027일자별등록 시트에 붙여넣는 한 줄입니다. 학년 구분 없이 합계이고,
+      <b>복사는 금일등록·금일환불 2칸만</b> — 전일등록·등록인원은 시트 수식입니다.</div>
+    <div class="tablewrap"><table id="winReportTable"></table></div>
+
     <div class="row" style="margin-top:14px">
       <button class="btn pri" id="winDashWriteBtn">등록대장에 기입</button>
+      <button class="btn" id="winSaveBtn">현황 저장(공유)</button>
       <span class="note" id="winDashOut" style="white-space:pre-wrap"></span>
     </div>
   </div>
@@ -935,10 +968,22 @@ function winDashRender(){
   const panel=document.getElementById('winDash');
   const dash=document.getElementById('dashContent');
   const empty=document.getElementById('dashEmpty');
-  if(!WINR){ panel.style.display='none'; return; }
+  if(!WINR){ panel.style.display='none';
+    const h=document.getElementById('winHero'); if(h) h.style.display='none'; return; }
   panel.style.display='block';
   if(dash) dash.style.display='none';
   if(empty) empty.style.display='none';
+  const hero=document.getElementById('winHero'); if(hero) hero.style.display='';
+  WIN_COURSES.forEach((c,i)=>{
+    const b=WINR.rows[i]||{}; const n=i+1;
+    const reg=(b.regM||0)+(b.regF||0), ref=(b.refM||0)+(b.refF||0);
+    document.getElementById(`winHero${n}Reg`).textContent=reg;
+    document.getElementById(`winHero${n}Ref`).textContent=ref;
+    document.getElementById(`winHero${n}Mini`).innerHTML=
+      `<div class="hp">접수<b>${b.jubsu||0}</b></div>`+
+      `<div class="hp">완납<b>${(b.fullM||0)+(b.fullF||0)}</b></div>`+
+      `<div class="hp">남/여<b>${(b.regM||0)}/${(b.regF||0)}</b></div>`;
+  });
   const after=!!(CFG.openWin && WINR.date>CFG.openWin);
   const tr=WINR.rows.map(b=>`<tr>
     <td><b>${b.course}</b></td>
@@ -954,8 +999,47 @@ function winDashRender(){
     </tr></thead><tbody>${tr}</tbody></table>`;
   document.getElementById('winDashNote').textContent=
     `${WINR.date} · 기입 대상 ${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}`;
+
+  // 보고용 한 줄 — 학년 구분 없이 합계
+  const reg=WINR.rows.reduce((n,b)=>n+b.regM+b.regF,0);
+  const ref=WINR.rows.reduce((n,b)=>n+b.refM+b.refF,0);
+  WINR.report={ 금일등록:reg, 금일환불:ref };
+  const md=WINR.date.slice(5).replace('-','/').replace(/^0/,'');
+  document.getElementById('winReportTable').innerHTML=
+    `<thead><tr><th>날짜</th><th>전일등록</th><th>금일등록</th><th>금일환불</th><th>등록인원</th></tr></thead>
+     <tbody><tr><td class="mono">${md}</td><td class="mono muted">시트 수식</td>
+       <td class="mono"><b>${reg}</b></td><td class="mono ${ref?'neg':''}"><b>${ref?-ref:0}</b></td>
+       <td class="mono muted">시트 수식</td></tr></tbody>`;
 }
 
+const _winCopy=document.getElementById('winReportCopyBtn');
+if(_winCopy) _winCopy.onclick=async()=>{
+  if(!WINR||!WINR.report){ toast('먼저 등록잡기를 실행하세요'); return; }
+  const txt=`${WINR.report.금일등록}\t${WINR.report.금일환불? -WINR.report.금일환불 : 0}`;
+  try{ await navigator.clipboard.writeText(txt); toast('✅ 금일등록·금일환불 2칸 복사됨'); }
+  catch(e){ toast('⚠ 복사 실패 — 직접 입력해 주세요'); }
+};
+const _winSave=document.getElementById('winSaveBtn');
+if(_winSave) _winSave.onclick=async()=>{
+  const out=document.getElementById('winDashOut');
+  if(!WINR){ out.textContent='먼저 등록잡기를 실행하세요.'; return; }
+  _winSave.disabled=true; out.textContent='저장 중…';
+  try{
+    // 윈터 rawlog — 시즌 네임스페이스(winter_)로 저장되어 '지난 등록 보기'에 쌓인다
+    const rows=WINR.rows.map(b=>({
+      날짜:WINR.date, 구분:(CFG.openWin && WINR.date>CFG.openWin)?'개강후':'개강전',
+      학년:b.course, 계열:'-', 반:'',
+      접수:b.jubsu, '등록-남':b.regM, '환불-남':b.refM?-b.refM:0,
+      '등록-여':b.regF, '환불-여':b.refF?-b.refF:0,
+      완납계:b.fullM+b.fullF, 작성자:CFG.writer||''
+    }));
+    await saveRawlogDay(WINR.date, rows);
+    out.innerHTML='✅ 현황 저장 완료 — 지난 등록 보기에 누적됩니다';
+    toast('✅ 저장 완료');
+  }catch(e){
+    out.innerHTML=`<span style="color:var(--red)">⚠ 저장 실패: ${e.message||e}</span>`;
+  }finally{ _winSave.disabled=false; }
+};
 const _winDashWrite=document.getElementById('winDashWriteBtn');
 if(_winDashWrite) _winDashWrite.onclick=async()=>{
   const out=document.getElementById('winDashOut');
@@ -2010,6 +2094,8 @@ function setSeason(s){
   });
   const wd=document.getElementById('winDash');
   if(wd && s!=='윈터') wd.style.display='none';
+  const wh=document.getElementById('winHero');
+  if(wh && s!=='윈터') wh.style.display='none';
   syncSeasonTexts(s);
 }
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
