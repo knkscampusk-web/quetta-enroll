@@ -1045,32 +1045,39 @@ function winDashRender(){
   WINR.rows.forEach(b=>{ for(const k in T) T[k]+=(b[k]||0); });
 
   const pct=(n,d)=>d>0?Math.round(n/d*1000)/10+'%':'—';
+  const neg=v=>v?`<b>${-v}</b>`:'';
   const tr=WINR.rows.map((b,i)=>{
     const cap=capOf(i,'M')+capOf(i,'F');
     return `<tr>
       <td><b>${b.course}</b></td>
+      <td class="mono">${b.접수계}</td>
       <td class="mono">${WINR.noPrev?'–':b.전일등록}</td>
       <td class="mono">${(b.regM+b.regF)||''}</td>
-      <td class="mono ${(b.refM+b.refF)?'neg':''}">${(b.refM+b.refF)?-(b.refM+b.refF):''}</td>
-      <td class="mono"><b>${b.등록인원}</b></td>
-      <td class="mono">${b.누적남}/${b.누적여}</td>
-      <td class="mono">${b.접수계}</td>
+      <td class="mono ${(b.refM+b.refF)?'neg':''}">${neg(b.refM+b.refF)}</td>
+      <td class="mono">${b.regM||''}</td>
+      <td class="mono ${b.refM?'neg':''}">${neg(b.refM)}</td>
+      <td class="mono">${b.regF||''}</td>
+      <td class="mono ${b.refF?'neg':''}">${neg(b.refF)}</td>
       <td class="mono">${b.완납계}</td>
       <td class="mono">${cap||'—'}</td>
       <td class="mono">${pct(b.등록인원,cap)}</td></tr>`;}).join('');
   const capT=['M','F'].reduce((n,g)=>n+capOf(0,g)+capOf(1,g),0);
   document.getElementById('winDashTable').innerHTML=
     `<table class="tbl"><thead><tr>
-      <th>과정</th><th>전일등록</th><th>금일등록</th><th>금일환불</th><th>등록인원</th><th>남/여</th>
-      <th>접수 계</th><th>완납 계</th><th>정원</th><th>충원율</th>
+      <th>과정</th><th>접수 계</th><th>전일등록</th><th>금일등록</th><th>금일환불</th>
+      <th>남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
+      <th>완납계</th><th>정원</th><th>충원율</th>
     </tr></thead><tbody>${tr}
       <tr class="sum"><td><b>소계</b></td>
+        <td class="mono">${T.접수계}</td>
         <td class="mono">${WINR.noPrev?'–':T.전일등록}</td>
         <td class="mono"><b>${T.regM+T.regF}</b></td>
-        <td class="mono ${(T.refM+T.refF)?'neg':''}"><b>${(T.refM+T.refF)?-(T.refM+T.refF):0}</b></td>
-        <td class="mono"><b>${T.등록인원}</b></td>
-        <td class="mono">${T.누적남}/${T.누적여}</td>
-        <td class="mono">${T.접수계}</td><td class="mono">${T.완납계}</td>
+        <td class="mono ${(T.refM+T.refF)?'neg':''}">${neg(T.refM+T.refF)||'<b>0</b>'}</td>
+        <td class="mono"><b>${T.regM}</b></td>
+        <td class="mono ${T.refM?'neg':''}">${neg(T.refM)||'<b>0</b>'}</td>
+        <td class="mono"><b>${T.regF}</b></td>
+        <td class="mono ${T.refF?'neg':''}">${neg(T.refF)||'<b>0</b>'}</td>
+        <td class="mono">${T.완납계}</td>
         <td class="mono">${capT||'—'}</td><td class="mono">${pct(T.등록인원,capT)}</td></tr>
     </tbody></table>`;
 
