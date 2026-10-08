@@ -284,8 +284,8 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row" style="margin-top:16px">
       <button class="btn" id="sbDailyBtn">경영지원에서 일일명단 불러오기</button>
       <button class="btn" id="gsLoadBtn">구글시트에서 마스터·접수현황 불러오기</button>
-      <button class="btn" id="writebackBtn">학생명단에 재등록일 기입</button>
-      <button class="btn" id="refundBtn">환불자 이동</button>
+      <button class="btn" id="writebackBtn" data-season-only="정규,반수">학생명단에 재등록일 기입</button>
+      <button class="btn" id="refundBtn" data-season-only="정규,반수">환불자 이동</button>
       <button class="btn pri" id="rosterBtn">학생명단으로 등록잡기</button>
       <span class="note" id="inputNote">권장: 자료 불러온 뒤 <b>학생명단으로 등록잡기</b> — 편성·재등록·미납을 한 번에 계산합니다.</span>
     </div>
@@ -315,6 +315,19 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   <div class="card" id="dashEmpty">
     <h3><span class="pin"></span> 일일 등록 현황</h3>
     <div class="desc">아직 처리된 자료가 없어요. <b>일일명단 입력</b> 탭에서 자료를 올리고 처리하면 여기 결과가 나옵니다.</div>
+  </div>
+
+  <div class="card" id="winDash" style="display:none">
+    <h3 style="justify-content:space-between">
+      <span><span class="pin"></span> 윈터 등록현황</span>
+      <span class="note" id="winDashNote"></span>
+    </h3>
+    <div class="desc">접수는 접수대장, 등록·환불·완납은 경영지원 일일명단 기준입니다. 성별은 수험번호로 접수대장과 맞춥니다.</div>
+    <div id="winDashTable" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn pri" id="winDashWriteBtn">등록대장에 기입</button>
+      <span class="note" id="winDashOut" style="white-space:pre-wrap"></span>
+    </div>
   </div>
 
   <div id="dashContent" style="display:none">
@@ -464,21 +477,7 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     </div>
     <div class="note" id="winRegOut" style="white-space:pre-wrap"></div>
   </div>
-  <div class="card" data-season-only="윈터">
-    <h3><span class="pin"></span> 윈터 등록현황 기입</h3>
-    <div class="desc">접수대장에서 기준일 하루치를 집계해 윈터 등록대장에 기입하고,
-      로데이터 블록을 <b>2027raw</b> 탭에 값으로 옮깁니다. 같은 날짜가 이미 있으면 이관은 건너뜁니다.
-      전일값은 어제 누적을 읽어 옮기고, 합계·소계 수식 칸은 건드리지 않아요.</div>
-    <div class="row" style="margin-top:12px;align-items:flex-end">
-      <div class="field" style="max-width:190px"><label>기준일</label>
-        <input type="date" id="winEnDate">
-      </div>
-      <button class="btn" id="winEnCalcBtn">집계 불러오기</button>
-      <button class="btn pri" id="winEnWriteBtn" disabled>등록대장에 기입</button>
-      <span class="note" id="winEnNote"></span>
-    </div>
-    <div id="winEnTable" style="margin-top:12px"></div>
-  </div>
+
   <div class="card">
     <h3><span class="pin"></span> 지난 등록 로그 업로드</h3>
     <div class="desc" id="histUpDesc"></div>
@@ -756,6 +755,106 @@ async function buildDailyFromSb(date){
   return { reg, ref, fileDate:date };
 }
 
+
+/* 윈터 등록잡기 — 접수는 접수대장(접수일), 등록·환불·완납은 경영지원 일일명단.
+ * 성별은 접수대장에서 수험번호로 맞춘다(일일명단에는 성별이 없다).
+ * 완납전환(잔금)은 선금 때 이미 셌으므로 등록으로 세지 않는다. */
+let WINR=null;
+async function winRosterRun(date, note){
+  try{
+    note.textContent='접수대장·일일명단 집계 중…';
+    const rows = STATE.winterLedger || (await fetchSheet('winter')).rows;
+    STATE.winterLedger = rows;
+    const daily = STATE.daily && STATE.daily.winter && STATE.daily.fileDate===date
+                ? STATE.daily : await buildDailyFromSb(date);
+    STATE.daily = daily;
+
+    // 접수대장 색인: 수험번호 → {course, sex}
+    const hdr=(rows[0]||[]).map(_wn);
+    const ix=n=>hdr.indexOf(_wn(n));
+    const Ix={ sid:ix('수험번호'), 접수:ix('접수일'), 과정:ix('시험유형'), 성별:ix('성별') };
+    const miss=Object.keys(Ix).filter(k=>Ix[k]<0);
+    if(miss.length) throw new Error('접수대장 열 없음: '+miss.join(', '));
+    const info={};
+    const sy=+String(date).slice(0,4);
+    const out={}; WIN_COURSES.forEach(c=>out[c]={course:c,jubsu:0,regM:0,regF:0,refM:0,refF:0,fullM:0,fullF:0});
+    for(let r=1;r<rows.length;r++){
+      const row=rows[r]||[];
+      const sid=String(row[Ix.sid]==null?'':row[Ix.sid]).replace(/\s/g,'');
+      const course=String(row[Ix.과정]||'').trim();
+      const sex=String(row[Ix.성별]||'').trim()==='남'?'M':'F';
+      if(sid) info[sid]={course,sex};
+      if(WIN_COURSES.indexOf(course)>=0 && winYmd(row[Ix.접수],sy)===date) out[course].jubsu++;
+    }
+
+    const 미매칭=[];
+    const bump=(sid, fallbackCourse, field)=>{
+      const f=info[sid];
+      const course=(f&&f.course) || fallbackCourse;
+      if(!f) 미매칭.push(sid);
+      if(WIN_COURSES.indexOf(course)<0) return;
+      const g=(f&&f.sex)||'F';
+      out[course][field+g]++;
+    };
+    daily.reg.forEach(x=>{
+      if(x.kind==='잔금'){ bump(x.sid, x.course, 'full'); return; }   // 완납전환 — 등록 아님
+      bump(x.sid, x.course, 'reg');
+      if(x.kind==='완납') bump(x.sid, x.course, 'full');
+    });
+    daily.ref.forEach(x=>bump(x.sid, x.course, 'ref'));
+
+    WINR={ date, rows:WIN_COURSES.map(c=>out[c]), 미매칭 };
+    winDashRender();
+    note.innerHTML=`✅ 접수대장 ${rows.length-1}행 · 일일명단 등록 ${daily.reg.length} · 환불 ${daily.ref.length} 집계 완료`
+      + (미매칭.length?` <span style="color:var(--red)">(접수대장에 없는 수험번호 ${미매칭.length}건: ${미매칭.join(', ')})</span>`:'');
+    switchTab('dash');
+  }catch(e){
+    console.error(e);
+    note.innerHTML=`<span style="color:var(--red)">⚠ ${e.message||e}</span>`;
+  }
+}
+
+function winDashRender(){
+  const panel=document.getElementById('winDash');
+  const dash=document.getElementById('dashContent');
+  const empty=document.getElementById('dashEmpty');
+  if(!WINR){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  if(dash) dash.style.display='none';
+  if(empty) empty.style.display='none';
+  const after=!!(CFG.openWin && WINR.date>CFG.openWin);
+  const tr=WINR.rows.map(b=>`<tr>
+    <td><b>${b.course}</b></td>
+    <td class="mono">${b.jubsu||''}</td>
+    <td class="mono">${b.regM||''}</td>
+    <td class="mono ${b.refM?'neg':''}">${b.refM?'-'+b.refM:''}</td>
+    <td class="mono">${b.regF||''}</td>
+    <td class="mono ${b.refF?'neg':''}">${b.refF?'-'+b.refF:''}</td>
+    <td class="mono">${(b.fullM+b.fullF)||''}</td></tr>`).join('');
+  document.getElementById('winDashTable').innerHTML=
+    `<table class="tbl"><thead><tr>
+      <th>과정</th><th>접수</th><th>등록-남</th><th>환불-남</th><th>등록-여</th><th>환불-여</th><th>완납</th>
+    </tr></thead><tbody>${tr}</tbody></table>`;
+  document.getElementById('winDashNote').textContent=
+    `${WINR.date} · 기입 대상 ${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}`;
+}
+
+const _winDashWrite=document.getElementById('winDashWriteBtn');
+if(_winDashWrite) _winDashWrite.onclick=async()=>{
+  const out=document.getElementById('winDashOut');
+  if(!WINR){ out.textContent='먼저 등록잡기를 실행하세요.'; return; }
+  const after=!!(CFG.openWin && WINR.date>CFG.openWin);
+  _winDashWrite.disabled=true; out.textContent='기입 중…';
+  try{
+    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WINR.rows }, '윈터 등록현황 기입');
+    const r=j.raw||{};
+    out.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
+      (r.ok ? `<br>📄 ${r.sheet} 로 ${r.date} ${r.kind} ${r.rows}행 이관 (${r.at}행부터)`
+            : `<br><span style="color:var(--red)">📄 로데이터 이관 안 됨 — ${r.msg||'사유 불명'}</span>`);
+  }catch(e){
+    out.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ ${e.message||e}</span>`;
+  }finally{ _winDashWrite.disabled=false; }
+};
 
 // 윈터 일일명단 — 내역에 '윈터'가 들어간 건만. 정규 기수는 섞이지 않는다.
 // 구분(선금/완납/잔금)은 내역 문자열 끝에서 읽고, 성별은 접수대장에서 수험번호로 맞춘다.
@@ -1776,6 +1875,24 @@ function setSeason(s){
   document.querySelectorAll('[data-season-only]').forEach(el=>{
     el.style.display = el.dataset.seasonOnly.split(',').indexOf(s)>=0 ? '' : 'none';
   });
+  // 윈터는 마스터·학생명단 개념이 없다. 접수대장이 그 역할을 한다.
+  const w = (s==='윈터');
+  const gb=document.getElementById('gsLoadBtn');
+  if(gb) gb.textContent = w ? '구글시트에서 접수대장 불러오기' : '구글시트에서 마스터·접수현황 불러오기';
+  const rb=document.getElementById('rosterBtn');
+  if(rb) rb.textContent = w ? '접수대장으로 등록잡기' : '학생명단으로 등록잡기';
+  const inote=document.getElementById('inputNote');
+  if(inote) inote.innerHTML = w
+    ? '윈터: <b>일일명단</b> + <b>접수대장</b>을 불러온 뒤 <b>접수대장으로 등록잡기</b>를 누르세요.'
+    : '권장: 자료 불러온 뒤 <b>학생명단으로 등록잡기</b> — 편성·재등록·미납을 한 번에 계산합니다.';
+  document.querySelectorAll('#loadStatus .stled').forEach(el=>{
+    const k=el.dataset.k;
+    el.style.display = (w && (k==='roster'||k==='refund')) ? 'none' : '';
+    if(w && k==='master') el.lastChild.textContent=' 접수대장';
+    if(!w && k==='master') el.lastChild.textContent=' 마스터·접수현황';
+  });
+  const wd=document.getElementById('winDash');
+  if(wd && s!=='윈터') wd.style.display='none';
   syncSeasonTexts(s);
 }
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
@@ -1940,103 +2057,6 @@ function winYmd(v, sy){
 }
 function _winY(mo,dy,sy){ return `${sy}-${_p2(mo)}-${_p2(dy)}`; }
 
-let WIN={ date:'', rows:null };
-
-function winAggregate(sheetRows, baseDate){
-  const sy=+String(baseDate).slice(0,4);   // 연도는 기준일에서 — 개강일과 무관
-  const hdr=(sheetRows[0]||[]).map(_wn);
-  const ix=n=>hdr.indexOf(_wn(n));
-  const I={ 접수:ix('접수일'), 예비:ix('예비 교습비'), 완납:ix('교습비 완납'),
-            환불:ix('환불'), 과정:ix('시험유형'), 성별:ix('성별') };
-  const miss=Object.keys(I).filter(k=>I[k]<0);
-  if(miss.length) throw new Error('접수대장 열 없음: '+miss.join(', '));
-
-  const out={}; let 미분류=0; const seen={}, seenReg={}, seenRef={};
-  WIN_COURSES.forEach(c=>out[c]={course:c,jubsu:0,regM:0,regF:0,refM:0,refF:0,fullM:0,fullF:0});
-  for(let r=1;r<sheetRows.length;r++){
-    const row=sheetRows[r]||[];
-    const course=String(row[I.과정]||'').trim();
-    if(!course) continue;
-    if(WIN_COURSES.indexOf(course)<0){ 미분류++; continue; }
-    const g=String(row[I.성별]||'').trim()==='남'?'M':'F';
-    const b=out[course];
-    const dj=winYmd(row[I.접수],sy); if(dj) seen[dj]=(seen[dj]||0)+1;
-    if(dj===baseDate) b.jubsu++;
-    const dp=winYmd(row[I.예비],sy); if(dp) seenReg[dp]=(seenReg[dp]||0)+1;
-    if(dp===baseDate) b['reg'+g]++;
-    const dr=winYmd(row[I.환불],sy); if(dr) seenRef[dr]=(seenRef[dr]||0)+1;
-    if(dr===baseDate) b['ref'+g]++;
-    if(winYmd(row[I.완납],sy)===baseDate) b['full'+g]++;
-  }
-  return { rows:WIN_COURSES.map(c=>out[c]), 미분류, seen, seenReg, seenRef };
-}
-
-function _winSeenTxt(o){
-  const k=Object.keys(o||{}).sort();
-  return k.length ? k.map(d=>`${d}(${o[d]})`).join(' · ') : '없음';
-}
-function winRenderTable(res, baseDate){
-  const box=document.getElementById('winEnTable');
-  const open=CFG.openWin||'';
-  const after=open && baseDate>open;   // 개강일은 기입 블록을 고르는 데만 쓴다
-  const total=res.rows.reduce((n,b)=>n+b.jubsu+b.regM+b.regF+b.refM+b.refF+b.fullM+b.fullF,0);
-  const tr=res.rows.map(b=>`<tr>
-    <td><b>${b.course}</b></td>
-    <td class="mono">${b.jubsu||''}</td>
-    <td class="mono">${b.regM||''}</td>
-    <td class="mono ${b.refM?'neg':''}">${b.refM?'-'+b.refM:''}</td>
-    <td class="mono">${b.regF||''}</td>
-    <td class="mono ${b.refF?'neg':''}">${b.refF?'-'+b.refF:''}</td>
-    <td class="mono">${(b.fullM+b.fullF)||''}</td></tr>`).join('');
-  box.innerHTML=`<table class="tbl"><thead><tr>
-      <th>과정</th><th>접수</th><th>등록-남</th><th>환불-남</th><th>등록-여</th><th>환불-여</th><th>완납</th>
-    </tr></thead><tbody>${tr}</tbody></table>
-    <div class="note" style="margin-top:8px">기입 대상: <b>${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}</b>
-      · 접수현황(3·4행)은 공통${res.미분류?` · <span style="color:var(--red)">과정 미분류 ${res.미분류}건</span>`:''}</div>`
-    + (total===0 ? `<div class="note" style="margin-top:6px;color:var(--red)">기준일 ${baseDate} 에 해당하는 건이 없습니다.<br>
-        인식된 접수일: ${_winSeenTxt(res.seen)}<br>
-        인식된 등록일(예비 교습비): ${_winSeenTxt(res.seenReg)}<br>
-        인식된 환불일: ${_winSeenTxt(res.seenRef)}</div>` : '');
-}
-
-const _winEnDate=document.getElementById('winEnDate');
-if(_winEnDate) _winEnDate.value=_dstr(new Date());
-const _winEnCalc=document.getElementById('winEnCalcBtn');
-if(_winEnCalc) _winEnCalc.onclick=async()=>{
-  const note=document.getElementById('winEnNote');
-  const d=document.getElementById('winEnDate').value;
-  if(!d){ note.innerHTML='<span style="color:var(--red)">기준일을 선택하세요.</span>'; return; }
-  _winEnCalc.disabled=true; note.textContent='접수대장 읽는 중…';
-  try{
-    const j=await fetchSheet('winter');
-    const res=winAggregate(j.rows, d);
-    WIN={ date:d, rows:res.rows };
-    winRenderTable(res, d);
-    note.innerHTML=`✅ ${j.sheet} ${j.count}행 집계 완료`;
-    document.getElementById('winEnWriteBtn').disabled=false;
-  }catch(e){
-    note.innerHTML=`<span style="color:var(--red)">⚠ ${e.message||e}</span>`;
-    document.getElementById('winEnWriteBtn').disabled=true;
-  }finally{ _winEnCalc.disabled=false; }
-};
-const _winEnWrite=document.getElementById('winEnWriteBtn');
-if(_winEnWrite) _winEnWrite.onclick=async()=>{
-  const note=document.getElementById('winEnNote');
-  if(!WIN.rows){ note.textContent='먼저 집계를 불러오세요.'; return; }
-  const after=!!(CFG.openWin && WIN.date>CFG.openWin);
-  _winEnWrite.disabled=true; note.textContent='기입 중…';
-  try{
-    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WIN.rows }, '윈터 등록현황 기입');
-    const r=j.raw||{};
-    const rawTxt = r.ok
-      ? `<br>📄 ${r.sheet} 로 ${r.date} ${r.kind} ${r.rows}행 이관 (${r.at}행부터)`
-      : `<br><span style="color:var(--red)">📄 로데이터 이관 안 됨 — ${r.msg||'사유 불명'}</span>`;
-    note.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
-      (j.notFound&&j.notFound.length?` <span style="color:var(--red)">(못찾음: ${j.notFound.join(', ')})</span>`:'') + rawTxt;
-  }catch(e){
-    note.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ ${e.message||e}</span>`;
-  }finally{ _winEnWrite.disabled=false; }
-};
 
 // 경영지원 설정 확인 — Supabase quetta_state 의 cfg 를 그대로 보여준다(읽기 전용).
 // 윈터 기수·과정 구분 같은 값이 거기 있으면 앱 설정에 중복 입력할 필요가 없다.
@@ -2292,6 +2312,7 @@ document.getElementById('rosterBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
   const date=document.getElementById('baseDate').value;
   if(!date){ toast('기준 날짜를 먼저 선택하세요'); return; }
+  if(_seasonNow()==='윈터'){ return winRosterRun(date, note); }
   if(!(parseInt(CFG.billMonth)||0)){ toast('설정에서 현재 집계월을 먼저 지정하세요'); switchTab('settings'); return; }
   note.textContent='구글시트에서 학생명단·접수현황 불러오는 중…';
   try{
@@ -2563,6 +2584,20 @@ document.getElementById('sbDailyBtn').onclick=async()=>{
 document.getElementById('gsLoadBtn').onclick=async()=>{
   const note=document.getElementById('gsNote');
   note.textContent='구글시트에서 불러오는 중…';
+  if(_seasonNow()==='윈터'){
+    // 윈터는 마스터가 없다. 접수대장이 명단이자 접수현황 소스.
+    try{
+      const j=await fetchSheet('winter');
+      STATE.winterLedger=j.rows;
+      setLed('master');
+      note.innerHTML=`✅ 접수대장 ${j.sheet} ${j.count}행 불러옴`;
+      toast('✅ 접수대장 불러오기 완료');
+    }catch(e){
+      console.error(e);
+      note.innerHTML=`<span style="color:var(--red)">⚠ 접수대장 불러오기 실패: ${e.message||e}</span>`;
+    }
+    return;
+  }
   try{
     const m=await fetchSheet('master');
     const r=await fetchSheet('receipt');
