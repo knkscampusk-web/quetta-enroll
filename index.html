@@ -1889,6 +1889,11 @@ function winYmd(v, sy){
   if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${_p2(v.getMonth()+1)}-${_p2(v.getDate())}`;
   const t=String(v).trim(); if(!t) return '';
   let m;
+  // '2026-10-07T15:00:00.000Z' 같은 UTC ISO 는 그대로 자르면 하루 밀린다 → 현지시각으로 환산
+  if(/^\d{4}-\d{2}-\d{2}T.*Z$/.test(t)){
+    const d=new Date(t);
+    if(!isNaN(d)) return `${d.getFullYear()}-${_p2(d.getMonth()+1)}-${_p2(d.getDate())}`;
+  }
   if((m=t.match(/^(\d{4})[-.\s]+(\d{1,2})[-.\s]+(\d{1,2})/))) return `${m[1]}-${_p2(m[2])}-${_p2(m[3])}`;
   if((m=t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/))) return _winY(+m[1],+m[2],sy);
   if((m=t.match(/^(\d{1,2})\/(\d{1,2})/)))          return _winY(+m[1],+m[2],sy);
@@ -1907,7 +1912,7 @@ function winAggregate(sheetRows, baseDate){
   const miss=Object.keys(I).filter(k=>I[k]<0);
   if(miss.length) throw new Error('접수대장 열 없음: '+miss.join(', '));
 
-  const out={}; let 미분류=0; const seen={};
+  const out={}; let 미분류=0; const seen={}, seenReg={}, seenRef={};
   WIN_COURSES.forEach(c=>out[c]={course:c,jubsu:0,regM:0,regF:0,refM:0,refF:0,fullM:0,fullF:0});
   for(let r=1;r<sheetRows.length;r++){
     const row=sheetRows[r]||[];
@@ -1918,13 +1923,19 @@ function winAggregate(sheetRows, baseDate){
     const b=out[course];
     const dj=winYmd(row[I.접수],sy); if(dj) seen[dj]=(seen[dj]||0)+1;
     if(dj===baseDate) b.jubsu++;
-    if(winYmd(row[I.예비],sy)===baseDate) b['reg'+g]++;
-    if(winYmd(row[I.환불],sy)===baseDate) b['ref'+g]++;
+    const dp=winYmd(row[I.예비],sy); if(dp) seenReg[dp]=(seenReg[dp]||0)+1;
+    if(dp===baseDate) b['reg'+g]++;
+    const dr=winYmd(row[I.환불],sy); if(dr) seenRef[dr]=(seenRef[dr]||0)+1;
+    if(dr===baseDate) b['ref'+g]++;
     if(winYmd(row[I.완납],sy)===baseDate) b['full'+g]++;
   }
-  return { rows:WIN_COURSES.map(c=>out[c]), 미분류, seen };
+  return { rows:WIN_COURSES.map(c=>out[c]), 미분류, seen, seenReg, seenRef };
 }
 
+function _winSeenTxt(o){
+  const k=Object.keys(o||{}).sort();
+  return k.length ? k.map(d=>`${d}(${o[d]})`).join(' · ') : '없음';
+}
 function winRenderTable(res, baseDate){
   const box=document.getElementById('winEnTable');
   const open=CFG.openWin||'';
@@ -1943,8 +1954,10 @@ function winRenderTable(res, baseDate){
     </tr></thead><tbody>${tr}</tbody></table>
     <div class="note" style="margin-top:8px">기입 대상: <b>${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}</b>
       · 접수현황(3·4행)은 공통${res.미분류?` · <span style="color:var(--red)">과정 미분류 ${res.미분류}건</span>`:''}</div>`
-    + (total===0 ? `<div class="note" style="margin-top:6px;color:var(--red)">기준일 ${baseDate} 에 해당하는 건이 없습니다. 접수대장에서 인식된 접수일: ${
-        Object.keys(res.seen||{}).sort().map(d=>`${d}(${res.seen[d]})`).join(' · ')||'없음'}</div>` : '');
+    + (total===0 ? `<div class="note" style="margin-top:6px;color:var(--red)">기준일 ${baseDate} 에 해당하는 건이 없습니다.<br>
+        인식된 접수일: ${_winSeenTxt(res.seen)}<br>
+        인식된 등록일(예비 교습비): ${_winSeenTxt(res.seenReg)}<br>
+        인식된 환불일: ${_winSeenTxt(res.seenRef)}</div>` : '');
 }
 
 const _winEnDate=document.getElementById('winEnDate');
