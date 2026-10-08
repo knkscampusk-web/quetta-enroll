@@ -466,7 +466,8 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
   </div>
   <div class="card" data-season-only="윈터">
     <h3><span class="pin"></span> 윈터 등록현황 기입</h3>
-    <div class="desc">접수대장에서 기준일 하루치를 집계해 윈터 등록대장에 기입합니다.
+    <div class="desc">접수대장에서 기준일 하루치를 집계해 윈터 등록대장에 기입하고,
+      로데이터 블록을 <b>2027raw</b> 탭에 값으로 옮깁니다. 같은 날짜가 이미 있으면 이관은 건너뜁니다.
       전일값은 어제 누적을 읽어 옮기고, 합계·소계 수식 칸은 건드리지 않아요.</div>
     <div class="row" style="margin-top:12px;align-items:flex-end">
       <div class="field" style="max-width:190px"><label>기준일</label>
@@ -1988,8 +1989,12 @@ if(_winEnWrite) _winEnWrite.onclick=async()=>{
   _winEnWrite.disabled=true; note.textContent='기입 중…';
   try{
     const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WIN.rows }, '윈터 등록현황 기입');
+    const r=j.raw||{};
+    const rawTxt = r.ok
+      ? `<br>📄 ${r.sheet} 로 ${r.date} ${r.kind} ${r.rows}행 이관 (${r.at}행부터)`
+      : `<br><span style="color:var(--red)">📄 로데이터 이관 안 됨 — ${r.msg||'사유 불명'}</span>`;
     note.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
-      (j.notFound&&j.notFound.length?` <span style="color:var(--red)">(못찾음: ${j.notFound.join(', ')})</span>`:'');
+      (j.notFound&&j.notFound.length?` <span style="color:var(--red)">(못찾음: ${j.notFound.join(', ')})</span>`:'') + rawTxt;
   }catch(e){
     note.innerHTML=`<span style="color:var(--red);white-space:pre-wrap">⚠ ${e.message||e}</span>`;
   }finally{ _winEnWrite.disabled=false; }
