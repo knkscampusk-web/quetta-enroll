@@ -749,8 +749,9 @@ function winParseTerm(term){
   const t=String(term||'');
   if(!/윈터/.test(t)) return null;
   const mc=t.match(/\[\s*(고[12])\s*\]/);
-  const mk=t.match(/_\s*([^_\s]+)\s*$/);
-  return { course: mc? mc[1]+' 과정' : '', kind: mk? mk[1] : '' };
+  // 끝에만 있다고 보면 뒤에 뭐가 붙었을 때 못 읽는다 → 문자열 어디서든 찾는다.
+  const mk=t.match(/_\s*(선금|잔금|완납)/);
+  return { course: mc? mc[1]+' 과정' : '', kind: mk? mk[1] : '', raw: t };
 }
 
 async function buildDailyFromSb(date){
@@ -810,25 +811,31 @@ async function winWbPreview(mode){
     const src = mode==='ref' ? daily.ref : daily.reg;
     const items = src.map(x=>{
       const f=cur[x.sid];
-      const kind = mode==='ref' ? '환불' : (x.kind||'선금');
-      const cols = kind==='환불' ? ['D','E'] : kind==='완납' ? ['B','C'] : kind==='잔금' ? ['C'] : ['B'];
-      const taken = !f ? [] : cols.filter(c=>c!=='E' && f[c]);
-      const state = !f ? '없음' : (taken.length===cols.filter(c=>c!=='E').length ? '건너뜀' : '기입');
+      const kind = mode==='ref' ? '환불' : (x.kind||'');     // 못 읽으면 비워둔다 — 추측해서 기입하지 않는다
+      const cols = kind==='환불' ? ['D','E'] : kind==='완납' ? ['B','C'] : kind==='잔금' ? ['C'] : kind==='선금' ? ['B'] : [];
+      const need = cols.filter(c=>c!=='E');
+      const taken = !f ? [] : need.filter(c=>f[c]);
+      const state = !kind ? '구분불명' : !f ? '없음' : (taken.length===need.length ? '건너뜀' : '기입');
       return { sid:x.sid, name:(f&&f.이름)||x.name||'', course:(f&&f.과정)||x.course||'',
-               kind, cols, state, now: f? [f.B&&'B:'+f.B, f.C&&'C:'+f.C, f.D&&'D:'+f.D].filter(Boolean).join(' ') : '' };
+               kind, cols, state, raw:x.cohort||'',
+               now: f? [f.B&&'B:'+f.B, f.C&&'C:'+f.C, f.D&&'D:'+f.D].filter(Boolean).join(' ') : '' };
     });
 
     WINWB={ mode, date, items };
     const n=k=>items.filter(i=>i.state===k).length;
     document.getElementById('winWbTitle').textContent = mode==='ref' ? '접수대장 환불 기입 미리보기' : '접수대장 등록 기입 미리보기';
     document.getElementById('winWbSummary').innerHTML =
-      `✅ 기입 ${n('기입')} · ⏭ 건너뜀 ${n('건너뜀')} · ⚠ 명단에 없음 ${n('없음')}`;
+      `✅ 기입 ${n('기입')} · ⏭ 건너뜀 ${n('건너뜀')} · ⚠ 명단에 없음 ${n('없음')}`
+      + (n('구분불명')?` · <span style="color:var(--red)">⚠ 구분불명 ${n('구분불명')}</span>`:'');
     document.getElementById('winWbTable').innerHTML =
-      `<thead><tr><th>상태</th><th>수험번호</th><th>이름</th><th>과정</th><th>구분</th><th>쓸 열</th><th>현재값</th></tr></thead><tbody>`
+      `<thead><tr><th>상태</th><th>수험번호</th><th>이름</th><th>과정</th><th>구분</th><th>내역(원본)</th><th>쓸 열</th><th>현재값</th></tr></thead><tbody>`
       + items.map(i=>`<tr class="${i.state==='기입'?'':'muted'}">
-          <td>${i.state==='기입'?'✅ 기입':i.state==='건너뜀'?'⏭ 건너뜀':'<span style="color:var(--red)">⚠ 없음</span>'}</td>
+          <td>${i.state==='기입'?'✅ 기입':i.state==='건너뜀'?'⏭ 건너뜀'
+             :i.state==='없음'?'<span style="color:var(--red)">⚠ 명단에 없음</span>'
+             :'<span style="color:var(--red)">⚠ 구분불명</span>'}</td>
           <td class="mono">${i.sid}</td><td>${i.name}</td><td>${i.course}</td>
-          <td>${i.kind}</td><td class="mono">${i.cols.join('·')}</td><td class="mono">${i.now}</td></tr>`).join('')
+          <td>${i.kind||'—'}</td><td class="mono">${i.raw}</td>
+          <td class="mono">${i.cols.join('·')||'—'}</td><td class="mono">${i.now}</td></tr>`).join('')
       + `</tbody>`;
     document.getElementById('winWbApplyBtn').disabled = n('기입')===0;
     document.getElementById('winWbApplyBtn').textContent = `접수대장에 ${n('기입')}건 기입 실행`;
