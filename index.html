@@ -154,6 +154,9 @@ main{padding:26px 26px 60px;max-width:1280px;margin:0 auto}
 .hero-panel-row .hp{font-size:13px;opacity:.92}
 .hero-panel-row .hp b{display:block;font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:2px;letter-spacing:-.01em}
 .hero-mark{position:absolute;right:-58px;bottom:-72px;width:210px;height:210px;border-radius:50%;border:42px solid rgba(255,255,255,.13);pointer-events:none}
+.hero-panel-label.big{font-size:19px;letter-spacing:.04em;text-transform:none;opacity:1}
+.hero-ghost{position:absolute;right:22px;top:50%;transform:translateY(-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:92px;line-height:.9;color:rgba(255,255,255,.17);letter-spacing:-.03em;pointer-events:none;z-index:0}
+@media(max-width:880px){.hero-ghost{font-size:68px;right:14px}}
 /* ===== Stat tiles ===== */
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
 @media(max-width:880px){.stats{grid-template-columns:repeat(2,1fr)}}
@@ -339,23 +342,25 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
 
   <div id="winHero" class="hero" style="display:none">
     <div class="hero-panel" id="winHero1">
-      <div class="hero-panel-label">TODAY · 고1 과정</div>
+      <div class="hero-panel-label big">고1 과정</div>
       <div class="hero-duo">
         <div class="hero-stat"><span class="hero-num" id="winHero1Reg">0</span><span class="hero-lab">등록</span></div>
         <div class="hero-div"></div>
         <div class="hero-stat"><span class="hero-num" id="winHero1Ref">0</span><span class="hero-lab">환불</span></div>
       </div>
       <div class="hero-panel-row" id="winHero1Mini"></div>
+      <span class="hero-ghost">고1</span>
       <span class="hero-mark"></span>
     </div>
     <div class="hero-panel" id="winHero2">
-      <div class="hero-panel-label">TODAY · 고2 과정</div>
+      <div class="hero-panel-label big">고2 과정</div>
       <div class="hero-duo">
         <div class="hero-stat"><span class="hero-num" id="winHero2Reg">0</span><span class="hero-lab">등록</span></div>
         <div class="hero-div"></div>
         <div class="hero-stat"><span class="hero-num" id="winHero2Ref">0</span><span class="hero-lab">환불</span></div>
       </div>
       <div class="hero-panel-row" id="winHero2Mini"></div>
+      <span class="hero-ghost">고2</span>
       <span class="hero-mark"></span>
     </div>
   </div>
