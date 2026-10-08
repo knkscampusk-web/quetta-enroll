@@ -360,12 +360,15 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     </div>
   </div>
 
+  <div class="stats" id="winTiles" style="display:none"></div>
+
   <div class="card" id="winDash" style="display:none">
     <h3 style="justify-content:space-between">
       <span><span class="pin"></span> 윈터 등록현황</span>
       <span class="note" id="winDashNote"></span>
     </h3>
     <div class="desc">접수는 접수대장, 등록·환불·완납은 경영지원 일일명단 기준입니다. 성별은 수험번호로 접수대장과 맞춥니다.</div>
+    <div id="winWarn"></div>
     <div id="winDashTable" style="margin-top:12px"></div>
 
     <div class="note" style="font-weight:700;color:var(--ink);margin:18px 0 6px;display:flex;justify-content:space-between;align-items:center">
@@ -379,8 +382,13 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
     <div class="row" style="margin-top:14px">
       <button class="btn pri" id="winDashWriteBtn">등록대장에 기입</button>
       <button class="btn" id="winSaveBtn">현황 저장(공유)</button>
+      <button class="btn" id="winPrevBtn">전일 불러오기</button>
       <span class="note" id="winDashOut" style="white-space:pre-wrap"></span>
     </div>
+
+    <div class="note" style="font-weight:700;color:var(--ink);margin:18px 0 6px">시즌제로 가용 정원</div>
+    <div class="desc">총 기숙사 정원 − 윈터 등록인원. 설정에서 기숙사 정원을 넣어야 계산됩니다.</div>
+    <div class="tablewrap"><table id="winZeroTable"></table></div>
   </div>
 
   <div id="dashContent" style="display:none">
@@ -570,6 +578,17 @@ code{background:var(--teal-soft);border:1px solid rgba(0,178,190,.22);padding:1p
         <input id="cfgCourseList" placeholder="고1 과정, 고2 과정">
       </div>
     </div>
+    <div class="row" style="margin-top:12px" data-season-only="윈터">
+      <div class="field" style="max-width:140px"><label>고1 정원 · 남</label><input type="number" id="cfgCapM1" min="0" placeholder="0"></div>
+      <div class="field" style="max-width:140px"><label>고1 정원 · 여</label><input type="number" id="cfgCapF1" min="0" placeholder="0"></div>
+      <div class="field" style="max-width:140px"><label>고2 정원 · 남</label><input type="number" id="cfgCapM2" min="0" placeholder="0"></div>
+      <div class="field" style="max-width:140px"><label>고2 정원 · 여</label><input type="number" id="cfgCapF2" min="0" placeholder="0"></div>
+    </div>
+    <div class="row" style="margin-top:12px" data-season-only="윈터">
+      <div class="field" style="max-width:170px"><label>총 기숙사 정원 · 남</label><input type="number" id="cfgDormM" min="0" placeholder="0"></div>
+      <div class="field" style="max-width:170px"><label>총 기숙사 정원 · 여</label><input type="number" id="cfgDormF" min="0" placeholder="0"></div>
+    </div>
+    <div class="note" data-season-only="윈터">시즌제로 정원 = 총 기숙사 정원 − 윈터 등록인원 (성별 각각)</div>
     <div class="note">등록·환불이 없는 반/전형도 raw에 항상 0으로 출력됩니다. 비워두면 그날 자료에 등장한 항목만 출력해요.</div>
   </div>
 
@@ -954,7 +973,34 @@ async function winRosterRun(date, note){
     });
     daily.ref.forEach(x=>bump(x.sid, x.course, 'ref'));
 
-    WINR={ date, rows:WIN_COURSES.map(c=>out[c]), 미매칭 };
+    // 전일값 — 정규와 동일하게 '어제 현황 저장본'에서. 저장을 거르면 끊긴다.
+    const prevDate=(()=>{ const t=new Date(date); t.setDate(t.getDate()-1); return _dstr(t); })();
+    let prev=null, noPrev=true;
+    try{
+      if(!HIST.dates.length) await loadRawlogAll();
+      const h=HIST.byDate[prevDate];
+      if(h&&Array.isArray(h.rows)) prev=h.rows;
+      noPrev=!prev;
+    }catch(e){ noPrev=true; }
+    const prevOf=(course,field)=>{
+      if(!prev) return 0;
+      const r=prev.find(x=>String(x['학년']||x.학년||'').trim()===course);
+      return r? (parseInt(r[field])||0) : 0;
+    };
+    WIN_COURSES.forEach(c=>{
+      const b=out[c];
+      b.전일등록 = prevOf(c,'등록인원');
+      b.전일접수 = prevOf(c,'접수 계');
+      b.전일완납 = prevOf(c,'완납계');
+      b.등록인원 = b.전일등록 + (b.regM+b.regF) - (b.refM+b.refF);
+      b.접수계   = b.전일접수 + b.jubsu;
+      b.완납계   = b.전일완납 + (b.fullM+b.fullF);
+      // 성별 누적 — 시즌제로 가용 정원 계산에 쓴다
+      b.누적남 = prevOf(c,'누적남') + b.regM - b.refM;
+      b.누적여 = prevOf(c,'누적여') + b.regF - b.refF;
+    });
+
+    WINR={ date, rows:WIN_COURSES.map(c=>out[c]), 미매칭, noPrev };
     winDashRender();
     note.innerHTML=`✅ 접수대장 ${rows.length-1}행 · 일일명단 등록 ${daily.reg.length} · 환불 ${daily.ref.length} 집계 완료`
       + (미매칭.length?` <span style="color:var(--red)">(접수대장에 없는 수험번호 ${미매칭.length}건: ${미매칭.join(', ')})</span>`:'');
@@ -970,7 +1016,8 @@ function winDashRender(){
   const dash=document.getElementById('dashContent');
   const empty=document.getElementById('dashEmpty');
   if(!WINR){ panel.style.display='none';
-    const h=document.getElementById('winHero'); if(h) h.style.display='none'; return; }
+    const h=document.getElementById('winHero'); if(h) h.style.display='none';
+    const t=document.getElementById('winTiles'); if(t) t.style.display='none'; return; }
   panel.style.display='block';
   if(dash) dash.style.display='none';
   if(empty) empty.style.display='none';
@@ -981,23 +1028,71 @@ function winDashRender(){
     document.getElementById(`winHero${n}Reg`).textContent=reg;
     document.getElementById(`winHero${n}Ref`).textContent=ref;
     document.getElementById(`winHero${n}Mini`).innerHTML=
-      `<div class="hp">접수<b>${b.jubsu||0}</b></div>`+
-      `<div class="hp">완납<b>${(b.fullM||0)+(b.fullF||0)}</b></div>`+
-      `<div class="hp">남/여<b>${(b.regM||0)}/${(b.regF||0)}</b></div>`;
+      `<div class="hp">등록인원<b>${b.등록인원||0}</b></div>`+
+      `<div class="hp">접수 계<b>${b.접수계||0}</b></div>`+
+      `<div class="hp">완납 계<b>${b.완납계||0}</b></div>`+
+      `<div class="hp">남/여<b>${b.누적남||0}/${b.누적여||0}</b></div>`;
   });
   const after=!!(CFG.openWin && WINR.date>CFG.openWin);
-  const tr=WINR.rows.map(b=>`<tr>
-    <td><b>${b.course}</b></td>
-    <td class="mono">${b.jubsu||''}</td>
-    <td class="mono">${b.regM||''}</td>
-    <td class="mono ${b.refM?'neg':''}">${b.refM?'-'+b.refM:''}</td>
-    <td class="mono">${b.regF||''}</td>
-    <td class="mono ${b.refF?'neg':''}">${b.refF?'-'+b.refF:''}</td>
-    <td class="mono">${(b.fullM+b.fullF)||''}</td></tr>`).join('');
+  const CAP=CFG.winCap||{}, DORM=CFG.winDorm||{};
+  const capOf=(i,g)=>{ const v=CAP[g+(i+1)]; return (v==null?0:v); };
+  const T={jubsu:0,regM:0,regF:0,refM:0,refF:0,전일등록:0,등록인원:0,접수계:0,완납계:0,누적남:0,누적여:0};
+  WINR.rows.forEach(b=>{ for(const k in T) T[k]+=(b[k]||0); });
+
+  const pct=(n,d)=>d>0?Math.round(n/d*1000)/10+'%':'—';
+  const tr=WINR.rows.map((b,i)=>{
+    const cap=capOf(i,'M')+capOf(i,'F');
+    return `<tr>
+      <td><b>${b.course}</b></td>
+      <td class="mono">${WINR.noPrev?'–':b.전일등록}</td>
+      <td class="mono">${(b.regM+b.regF)||''}</td>
+      <td class="mono ${(b.refM+b.refF)?'neg':''}">${(b.refM+b.refF)?-(b.refM+b.refF):''}</td>
+      <td class="mono"><b>${b.등록인원}</b></td>
+      <td class="mono">${b.누적남}/${b.누적여}</td>
+      <td class="mono">${b.접수계}</td>
+      <td class="mono">${b.완납계}</td>
+      <td class="mono">${cap||'—'}</td>
+      <td class="mono">${pct(b.등록인원,cap)}</td></tr>`;}).join('');
+  const capT=['M','F'].reduce((n,g)=>n+capOf(0,g)+capOf(1,g),0);
   document.getElementById('winDashTable').innerHTML=
     `<table class="tbl"><thead><tr>
-      <th>과정</th><th>접수</th><th>등록-남</th><th>환불-남</th><th>등록-여</th><th>환불-여</th><th>완납</th>
-    </tr></thead><tbody>${tr}</tbody></table>`;
+      <th>과정</th><th>전일등록</th><th>금일등록</th><th>금일환불</th><th>등록인원</th><th>남/여</th>
+      <th>접수 계</th><th>완납 계</th><th>정원</th><th>충원율</th>
+    </tr></thead><tbody>${tr}
+      <tr class="sum"><td><b>소계</b></td>
+        <td class="mono">${WINR.noPrev?'–':T.전일등록}</td>
+        <td class="mono"><b>${T.regM+T.regF}</b></td>
+        <td class="mono ${(T.refM+T.refF)?'neg':''}"><b>${(T.refM+T.refF)?-(T.refM+T.refF):0}</b></td>
+        <td class="mono"><b>${T.등록인원}</b></td>
+        <td class="mono">${T.누적남}/${T.누적여}</td>
+        <td class="mono">${T.접수계}</td><td class="mono">${T.완납계}</td>
+        <td class="mono">${capT||'—'}</td><td class="mono">${pct(T.등록인원,capT)}</td></tr>
+    </tbody></table>`;
+
+  document.getElementById('winWarn').innerHTML = WINR.noPrev
+    ? `<div class="note" style="color:var(--red)">전일 저장본이 없어 전일등록을 0으로 잡았습니다. 매일 <b>현황 저장</b>을 눌러야 다음날로 이어집니다.</div>` : '';
+
+  // 통계 타일
+  const tile=(lab,val,sub,cls)=>`<div class="stat ${cls||''}"><div class="v">${val}</div><div class="l">${lab}${sub?` · ${sub}`:''}</div></div>`;
+  const tiles=document.getElementById('winTiles');
+  tiles.style.display='';
+  tiles.innerHTML =
+    tile('윈터 총 등록인원', T.등록인원, `남 ${T.누적남} · 여 ${T.누적여}`, 't')
+    + WINR.rows.map((b,i)=>tile(b.course+' 등록인원', b.등록인원, `정원 ${capOf(i,'M')+capOf(i,'F')||'—'} · ${pct(b.등록인원,capOf(i,'M')+capOf(i,'F'))}`, 'g')).join('')
+    + tile('총 접수', T.접수계, `완납 ${T.완납계}`, 'y');
+
+  // 시즌제로 가용 정원 = 총 기숙사 정원 − 윈터 등록인원 (성별)
+  const zm=(DORM.M==null?null:DORM.M-T.누적남), zf=(DORM.F==null?null:DORM.F-T.누적여);
+  document.getElementById('winZeroTable').innerHTML=
+    `<thead><tr><th>성별</th><th>총 기숙사 정원</th><th>윈터 등록인원</th><th>시즌제로 가용</th></tr></thead>
+     <tbody>
+      <tr><td>남</td><td class="mono">${DORM.M??'—'}</td><td class="mono">${T.누적남}</td><td class="mono"><b>${zm??'—'}</b></td></tr>
+      <tr><td>여</td><td class="mono">${DORM.F??'—'}</td><td class="mono">${T.누적여}</td><td class="mono"><b>${zf??'—'}</b></td></tr>
+      <tr class="sum"><td><b>합계</b></td>
+        <td class="mono">${(DORM.M??0)+(DORM.F??0)||'—'}</td>
+        <td class="mono">${T.등록인원}</td>
+        <td class="mono"><b>${(zm==null||zf==null)?'—':zm+zf}</b></td></tr>
+     </tbody>`;
   document.getElementById('winDashNote').textContent=
     `${WINR.date} · 기입 대상 ${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}`;
 
@@ -1030,9 +1125,11 @@ if(_winSave) _winSave.onclick=async()=>{
     const rows=WINR.rows.map(b=>({
       날짜:WINR.date, 구분:(CFG.openWin && WINR.date>CFG.openWin)?'개강후':'개강전',
       학년:b.course, 계열:'-', 반:'',
-      접수:b.jubsu, '등록-남':b.regM, '환불-남':b.refM?-b.refM:0,
+      접수:b.jubsu, '접수 계':b.접수계,
+      '등록-남':b.regM, '환불-남':b.refM?-b.refM:0,
       '등록-여':b.regF, '환불-여':b.refF?-b.refF:0,
-      완납계:b.fullM+b.fullF, 작성자:CFG.writer||''
+      완납계:b.완납계, 등록인원:b.등록인원, 누적남:b.누적남, 누적여:b.누적여,
+      작성자:CFG.writer||''
     }));
     await saveRawlogDay(WINR.date, rows);
     out.innerHTML='✅ 현황 저장 완료 — 지난 등록 보기에 누적됩니다';
@@ -1040,6 +1137,16 @@ if(_winSave) _winSave.onclick=async()=>{
   }catch(e){
     out.innerHTML=`<span style="color:var(--red)">⚠ 저장 실패: ${e.message||e}</span>`;
   }finally{ _winSave.disabled=false; }
+};
+const _winPrev=document.getElementById('winPrevBtn');
+if(_winPrev) _winPrev.onclick=async()=>{
+  const out=document.getElementById('winDashOut');
+  out.textContent='전일 저장본 다시 읽는 중…';
+  try{ await loadRawlogAll(true);
+    const d=document.getElementById('baseDate').value;
+    if(d) await winRosterRun(d, document.getElementById('gsNote'));
+    out.textContent='✅ 전일값 갱신됨';
+  }catch(e){ out.innerHTML=`<span style="color:var(--red)">⚠ ${e.message||e}</span>`; }
 };
 const _winDashWrite=document.getElementById('winDashWriteBtn');
 if(_winDashWrite) _winDashWrite.onclick=async()=>{
@@ -2102,6 +2209,8 @@ function setSeason(s){
   if(wd && s!=='윈터') wd.style.display='none';
   const wh=document.getElementById('winHero');
   if(wh && s!=='윈터') wh.style.display='none';
+  const wt=document.getElementById('winTiles');
+  if(wt && s!=='윈터') wt.style.display='none';
   syncSeasonTexts(s);
 }
 function RLPFX(season){ return (season||_seasonNow())==='윈터' ? 'winter_' : ''; }
@@ -2201,7 +2310,7 @@ document.getElementById('loadPrevBtn').onclick=()=>renderDash();
  * =================================================================== */
 let CFG={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],billMonth:null,baselines:{}};
 const parseList = s => (s||'').split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
-const CFG_DEFAULT={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],courseList:[],billMonth:null,baselines:{},jangMap:{}};
+const CFG_DEFAULT={openReg:'',openBan:'',openWin:'',writer:'',banList:[],jhList:[],courseList:[],billMonth:null,baselines:{},jangMap:{},winCap:{},winDorm:{}};
 async function loadCfg(){
   // 시즌을 바꾸면 이전 시즌 값이 남지 않도록 먼저 초기화한다.
   // (없으면 윈터에 정규 설정이 그대로 보인다)
@@ -2213,6 +2322,8 @@ async function loadCfg(){
   if(!Array.isArray(CFG.banList)) CFG.banList=[];
   if(!Array.isArray(CFG.jhList)) CFG.jhList=[];
   if(!Array.isArray(CFG.courseList)) CFG.courseList=[];
+  if(typeof CFG.winCap!=='object'||!CFG.winCap) CFG.winCap={};
+  if(typeof CFG.winDorm!=='object'||!CFG.winDorm) CFG.winDorm={};
   if(typeof CFG.baselines!=='object'||!CFG.baselines) CFG.baselines={};
   if(typeof CFG.jangMap!=='object'||!CFG.jangMap) CFG.jangMap={};
   document.getElementById('cfgOpenReg').value=CFG.openReg||'';
@@ -2222,6 +2333,13 @@ async function loadCfg(){
   document.getElementById('cfgBanList').value=(CFG.banList||[]).join(', ');
   document.getElementById('cfgJhList').value=(CFG.jhList||[]).join(', ');
   document.getElementById('cfgCourseList').value=(CFG.courseList||[]).join(', ');
+  const _wc=CFG.winCap||{}, _wdm=CFG.winDorm||{};
+  document.getElementById('cfgCapM1').value=_wc.M1??'';
+  document.getElementById('cfgCapF1').value=_wc.F1??'';
+  document.getElementById('cfgCapM2').value=_wc.M2??'';
+  document.getElementById('cfgCapF2').value=_wc.F2??'';
+  document.getElementById('cfgDormM').value=_wdm.M??'';
+  document.getElementById('cfgDormF').value=_wdm.F??'';
   document.getElementById('cfgBillMonth').value=CFG.billMonth||'';
   syncBaselineFields();
   renderJangRows();
@@ -2371,6 +2489,9 @@ document.getElementById('cfgSaveBtn').onclick=async()=>{
   CFG.banList=parseList(document.getElementById('cfgBanList').value);
   CFG.jhList=parseList(document.getElementById('cfgJhList').value);
   CFG.courseList=parseList(document.getElementById('cfgCourseList').value);
+  const _n=id=>{ const v=document.getElementById(id).value; return v===''?null:(parseInt(v)||0); };
+  CFG.winCap={ M1:_n('cfgCapM1'), F1:_n('cfgCapF1'), M2:_n('cfgCapM2'), F2:_n('cfgCapF2') };
+  CFG.winDorm={ M:_n('cfgDormM'), F:_n('cfgDormF') };
   localStorage.setItem(LK('cfg')+(RLPFX()?'_winter':''),JSON.stringify(CFG));
   if(CFG.writer) document.getElementById('writer').value=CFG.writer;
   updateSplitTag();
