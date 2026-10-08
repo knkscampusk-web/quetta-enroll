@@ -1883,10 +1883,7 @@ document.getElementById('cfgBillMonth').addEventListener('input',syncBaselineFie
 const WIN_COURSES=['고1 과정','고2 과정'];
 const _wn = x => String(x==null?'':x).replace(/\s/g,'');
 const _p2 = n => String(n).padStart(2,'0');
-function _winSeasonYear(){
-  const o=CFG.openWin||'';
-  return o ? +o.slice(0,4) : (new Date()).getFullYear();
-}
+
 function winYmd(v, sy){
   if(v==null||v==='') return '';
   if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${_p2(v.getMonth()+1)}-${_p2(v.getDate())}`;
@@ -1897,12 +1894,12 @@ function winYmd(v, sy){
   if((m=t.match(/^(\d{1,2})\/(\d{1,2})/)))          return _winY(+m[1],+m[2],sy);
   return '';
 }
-function _winY(mo,dy,sy){ return `${mo>=9?sy:sy+1}-${_p2(mo)}-${_p2(dy)}`; }
+function _winY(mo,dy,sy){ return `${sy}-${_p2(mo)}-${_p2(dy)}`; }
 
 let WIN={ date:'', rows:null };
 
 function winAggregate(sheetRows, baseDate){
-  const sy=_winSeasonYear();
+  const sy=+String(baseDate).slice(0,4);   // 연도는 기준일에서 — 개강일과 무관
   const hdr=(sheetRows[0]||[]).map(_wn);
   const ix=n=>hdr.indexOf(_wn(n));
   const I={ 접수:ix('접수일'), 예비:ix('예비 교습비'), 완납:ix('교습비 완납'),
@@ -1910,7 +1907,7 @@ function winAggregate(sheetRows, baseDate){
   const miss=Object.keys(I).filter(k=>I[k]<0);
   if(miss.length) throw new Error('접수대장 열 없음: '+miss.join(', '));
 
-  const out={}; let 미분류=0;
+  const out={}; let 미분류=0; const seen={};
   WIN_COURSES.forEach(c=>out[c]={course:c,jubsu:0,regM:0,regF:0,refM:0,refF:0,fullM:0,fullF:0});
   for(let r=1;r<sheetRows.length;r++){
     const row=sheetRows[r]||[];
@@ -1919,18 +1916,20 @@ function winAggregate(sheetRows, baseDate){
     if(WIN_COURSES.indexOf(course)<0){ 미분류++; continue; }
     const g=String(row[I.성별]||'').trim()==='남'?'M':'F';
     const b=out[course];
-    if(winYmd(row[I.접수],sy)===baseDate) b.jubsu++;
+    const dj=winYmd(row[I.접수],sy); if(dj) seen[dj]=(seen[dj]||0)+1;
+    if(dj===baseDate) b.jubsu++;
     if(winYmd(row[I.예비],sy)===baseDate) b['reg'+g]++;
     if(winYmd(row[I.환불],sy)===baseDate) b['ref'+g]++;
     if(winYmd(row[I.완납],sy)===baseDate) b['full'+g]++;
   }
-  return { rows:WIN_COURSES.map(c=>out[c]), 미분류 };
+  return { rows:WIN_COURSES.map(c=>out[c]), 미분류, seen };
 }
 
 function winRenderTable(res, baseDate){
   const box=document.getElementById('winEnTable');
   const open=CFG.openWin||'';
-  const after=open && baseDate>open;
+  const after=open && baseDate>open;   // 개강일은 기입 블록을 고르는 데만 쓴다
+  const total=res.rows.reduce((n,b)=>n+b.jubsu+b.regM+b.regF+b.refM+b.refF+b.fullM+b.fullF,0);
   const tr=res.rows.map(b=>`<tr>
     <td><b>${b.course}</b></td>
     <td class="mono">${b.jubsu||''}</td>
@@ -1943,7 +1942,9 @@ function winRenderTable(res, baseDate){
       <th>과정</th><th>접수</th><th>등록-남</th><th>환불-남</th><th>등록-여</th><th>환불-여</th><th>완납</th>
     </tr></thead><tbody>${tr}</tbody></table>
     <div class="note" style="margin-top:8px">기입 대상: <b>${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}</b>
-      · 접수현황(3·4행)은 공통${res.미분류?` · <span style="color:var(--red)">과정 미분류 ${res.미분류}건</span>`:''}</div>`;
+      · 접수현황(3·4행)은 공통${res.미분류?` · <span style="color:var(--red)">과정 미분류 ${res.미분류}건</span>`:''}</div>`
+    + (total===0 ? `<div class="note" style="margin-top:6px;color:var(--red)">기준일 ${baseDate} 에 해당하는 건이 없습니다. 접수대장에서 인식된 접수일: ${
+        Object.keys(res.seen||{}).sort().map(d=>`${d}(${res.seen[d]})`).join(' · ')||'없음'}</div>` : '');
 }
 
 const _winEnDate=document.getElementById('winEnDate');
@@ -1953,7 +1954,6 @@ if(_winEnCalc) _winEnCalc.onclick=async()=>{
   const note=document.getElementById('winEnNote');
   const d=document.getElementById('winEnDate').value;
   if(!d){ note.innerHTML='<span style="color:var(--red)">기준일을 선택하세요.</span>'; return; }
-  if(!CFG.openWin){ note.innerHTML='<span style="color:var(--red)">설정에 윈터 개강일을 먼저 넣어주세요 — 연도·개강전후 판정에 필요합니다.</span>'; return; }
   _winEnCalc.disabled=true; note.textContent='접수대장 읽는 중…';
   try{
     const j=await fetchSheet('winter');
