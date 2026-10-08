@@ -845,12 +845,13 @@ async function winWbPreview(mode){
     const items = src.map(x=>{
       const f=cur[x.sid];
       const kind = mode==='ref' ? '환불' : (x.kind||'');     // 못 읽으면 비워둔다 — 추측해서 기입하지 않는다
+      const label = mode==='ref' ? '환불' : (x.conv ? '완납전환' : kind||'');
       const cols = kind==='환불' ? ['D','E'] : kind==='완납' ? ['B','C'] : kind==='잔금' ? ['C'] : kind==='선금' ? ['B'] : [];
       const need = cols.filter(c=>c!=='E');
       const taken = !f ? [] : need.filter(c=>f[c]);
       const state = !kind ? '구분불명' : !f ? '없음' : (taken.length===need.length ? '건너뜀' : '기입');
       return { sid:x.sid, name:(f&&f.이름)||x.name||'', course:(f&&f.과정)||x.course||'',
-               kind, cols, state, raw:x.cohort||'',
+               kind, label, cols, state, raw:x.cohort||'',
                now: f? [f.B&&'B:'+f.B, f.C&&'C:'+f.C, f.D&&'D:'+f.D].filter(Boolean).join(' ') : '' };
     });
 
@@ -867,7 +868,7 @@ async function winWbPreview(mode){
              :i.state==='없음'?'<span style="color:var(--red)">⚠ 명단에 없음</span>'
              :'<span style="color:var(--red)">⚠ 구분불명</span>'}</td>
           <td class="mono">${i.sid}</td><td>${i.name}</td><td>${i.course}</td>
-          <td>${i.kind||'—'}</td><td class="mono">${i.raw}</td>
+          <td>${i.label||'—'}</td><td class="mono">${i.raw}</td>
           <td class="mono">${i.cols.join('·')||'—'}</td><td class="mono">${i.now}</td></tr>`).join('')
       + `</tbody>`;
     document.getElementById('winWbApplyBtn').disabled = n('기입')===0;
@@ -1073,10 +1074,15 @@ async function buildWinterDailyFromSb(date){
   ];
 
   const reg=regs.map(p=>{ const w=winParseTerm(p.내역)||{};
+    // 완납전환은 내역이 '_완납'으로 와서 당일 완납과 구분되지 않는다.
+    // 경영지원이 보내는 _conv 플래그가 유일한 판정 근거다(true = 선금 냈던 사람의 잔금 납부).
+    const conv = (p._conv===true);
+    const kind = conv ? '잔금' : w.kind;
     return { sid:norm(p.수험번호), name:p.이름, ban:p.반, cohort:p.내역,
-             course:w.course, kind:w.kind, jang:p.장학,
-             // 완납전환(잔금)은 이미 선금 때 셌으므로 등록으로 세지 않는다
-             countReg: w.kind!=='잔금' };
+             course:w.course, kind, conv, lump:(p._lump===true), isOut:(p._isOut===true),
+             jang:p.장학,
+             // 완납전환은 선금 때 이미 등록으로 셌으므로 다시 세지 않는다
+             countReg: !conv };
   });
   const ref=refs.map(r=>{ const w=winParseTerm(r.내역)||{};
     return { sid:norm(r.수험번호), name:r.이름, cohort:r.내역, course:w.course, kind:w.kind, jang:r.장학 };
