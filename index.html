@@ -1166,7 +1166,7 @@ if(_winSave) _winSave.onclick=async()=>{
       b.jubsu, b.접수계,
       b.regM, b.refM?-b.refM:0,
       b.regF, b.refF?-b.refF:0,
-      b.완납계, b.등록인원, b.누적남, b.누적여, writer
+      (b.fullM+b.fullF), b.완납계, b.등록인원, b.누적남, b.누적여, writer
     ]);
     await saveRawlogDay(WINR.date, rows);
     out.innerHTML='✅ 현황 저장 완료 — 지난 등록 보기에 누적됩니다';
@@ -2418,7 +2418,7 @@ document.getElementById('cfgBillMonth').addEventListener('input',syncBaselineFie
 const WIN_COURSES=['고1 과정','고2 과정'];
 // 윈터 rawlog 열 — packRows/unpackRows 가 배열만 다루므로 순서가 곧 스키마다.
 const WIN_RAW_COLS=['날짜','구분','학년','계열','반','접수','접수 계',
-  '등록-남','환불-남','등록-여','환불-여','완납계','등록인원','누적남','누적여','작성자'];
+  '등록-남','환불-남','등록-여','환불-여','완납','완납계','등록인원','누적남','누적여','작성자'];
 const WIN_IX=(()=>{ const o={}; WIN_RAW_COLS.forEach((c,i)=>o[c]=i); return o; })();
 const _wn = x => String(x==null?'':x).replace(/\s/g,'');
 const _p2 = n => String(n).padStart(2,'0');
@@ -3112,6 +3112,63 @@ function buildCumulativeResult(date){
   return day;
 }
 // 지난 등록 보기 — 탭 내부 자체 렌더 (두 축 표 + 대조)
+// 윈터 지난 등록 보기 — 정규와 같은 방식. 선택일까지 일별 증감을 처음부터 누적한다.
+function buildWinterHist(date){
+  const out={}; WIN_COURSES.forEach(c=>out[c]={course:c,jubsu:0,regM:0,refM:0,regF:0,refF:0,full:0,
+    dJubsu:0,dRegM:0,dRefM:0,dRegF:0,dRefF:0,dFull:0});
+  const n=v=>parseInt(v)||0;
+  for(const d of HIST.dates.filter(x=>x<=date)){
+    const rows=(HIST.byDate[d]&&HIST.byDate[d].rows)||[];
+    for(const r of rows){
+      if(!Array.isArray(r)) continue;
+      const c=String(r[WIN_IX['학년']]||'').trim();
+      const b=out[c]; if(!b) continue;
+      const jb=n(r[WIN_IX['접수']]), rm=n(r[WIN_IX['등록-남']]), fm=Math.abs(n(r[WIN_IX['환불-남']]));
+      const rf=n(r[WIN_IX['등록-여']]), ff=Math.abs(n(r[WIN_IX['환불-여']])), fl=n(r[WIN_IX['완납']]);
+      b.jubsu+=jb; b.regM+=rm; b.refM+=fm; b.regF+=rf; b.refF+=ff; b.full+=fl;
+      if(d===date){ b.dJubsu=jb; b.dRegM=rm; b.dRefM=fm; b.dRegF=rf; b.dRefF=ff; b.dFull=fl; }
+    }
+  }
+  WIN_COURSES.forEach(c=>{ const b=out[c];
+    b.등록인원=b.regM+b.regF-b.refM-b.refF; b.누적남=b.regM-b.refM; b.누적여=b.regF-b.refF; });
+  return { date, rows:WIN_COURSES.map(c=>out[c]) };
+}
+function renderWinterHist(H){
+  const T={jubsu:0,full:0,등록인원:0,누적남:0,누적여:0,dRegM:0,dRefM:0,dRegF:0,dRefF:0,dJubsu:0,dFull:0};
+  H.rows.forEach(b=>{ for(const k in T) T[k]+=(b[k]||0); });
+  const dReg=T.dRegM+T.dRegF, dRef=T.dRefM+T.dRefF;
+  const cell=v=>`<td class="mono">${v||''}</td>`;
+  const tr=H.rows.map(b=>`<tr><td><b>${b.course}</b></td>
+    ${cell(b.jubsu)}${cell(b.dRegM+b.dRegF)}
+    <td class="mono ${(b.dRefM+b.dRefF)?'neg':''}">${(b.dRefM+b.dRefF)?-(b.dRefM+b.dRefF):''}</td>
+    ${cell(b.dRegM)}<td class="mono ${b.dRefM?'neg':''}">${b.dRefM?-b.dRefM:''}</td>
+    ${cell(b.dRegF)}<td class="mono ${b.dRefF?'neg':''}">${b.dRefF?-b.dRefF:''}</td>
+    ${cell(b.full)}<td class="mono"><b>${b.등록인원}</b></td>
+    <td class="mono">${b.누적남}/${b.누적여}</td></tr>`).join('');
+  const st=(cls,v,l)=>`<div class="stat ${cls}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  document.getElementById('histBody').innerHTML=`
+    <div class="card">
+      <h3><span class="pin"></span> ${H.date} 현황 <span class="tag pre">윈터 · 누적</span></h3>
+      <div class="desc">선택일까지 누적 반영 · 큰 숫자는 그날 증감입니다.</div>
+      <div class="stats" style="margin:14px 0 18px">
+        ${st('g',dReg,'그날 등록')}${st('r',dRef,'그날 환불')}
+        ${st('t',T.등록인원,'등록인원(누적)')}${st('y',T.jubsu,'접수 계(누적)')}
+        ${st('',T.full,'완납 계(누적)')}
+      </div>
+      <div class="tablewrap"><table class="tbl"><thead><tr>
+        <th>과정</th><th>접수 계</th><th>금일등록</th><th>금일환불</th>
+        <th>남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
+        <th>완납계</th><th>등록인원</th><th>남/여</th>
+      </tr></thead><tbody>${tr}
+        <tr class="sum"><td><b>소계</b></td>${cell(T.jubsu)}<td class="mono"><b>${dReg}</b></td>
+          <td class="mono ${dRef?'neg':''}"><b>${dRef?-dRef:0}</b></td>
+          <td class="mono"><b>${T.dRegM}</b></td><td class="mono ${T.dRefM?'neg':''}"><b>${T.dRefM?-T.dRefM:0}</b></td>
+          <td class="mono"><b>${T.dRegF}</b></td><td class="mono ${T.dRefF?'neg':''}"><b>${T.dRefF?-T.dRefF:0}</b></td>
+          ${cell(T.full)}<td class="mono"><b>${T.등록인원}</b></td>
+          <td class="mono">${T.누적남}/${T.누적여}</td></tr>
+      </tbody></table></div>
+    </div>`;
+}
 function renderHist(R){
   const banAll=[...R.banList,'미배정'];
   const sum=f=>banAll.reduce((a,b)=>a+((R.perBan[b]&&R.perBan[b][f])||0),0);
@@ -3196,8 +3253,8 @@ function renderHist(R){
   drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]); });
   btn.onclick=()=>{
     const d=sel.value; if(!d||!HIST.byDate[d]) return;
-    const R=buildCumulativeResult(d);
-    renderHist(R);
+    if(_seasonNow()==='윈터'){ renderWinterHist(buildWinterHist(d)); }
+    else { renderHist(buildCumulativeResult(d)); }
     document.getElementById('histList').style.display='none';
     document.getElementById('histView').style.display='block';
   };
