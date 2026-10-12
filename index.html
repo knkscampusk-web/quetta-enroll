@@ -712,6 +712,23 @@ function _b64url(str){
   let bin=''; bytes.forEach(b=>{ bin+=String.fromCharCode(b); });
   return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_');
 }
+// 수험번호가 많으면 URL 길이에 걸린다 → 자동 분할 전송 후 결과 합산.
+// 재전송해도 이미 값이 있는 칸은 건너뛰므로 중복 기입은 생기지 않는다.
+async function gsWriteSids(payload, sids, label, onProgress){
+  const CHUNK=120;
+  const parts=[]; for(let i=0;i<sids.length;i+=CHUNK) parts.push(sids.slice(i,i+CHUNK));
+  const acc={ written:[], skipped:[], notFound:[], sheet:'', kind:payload.kind, date:'' };
+  for(let i=0;i<parts.length;i++){
+    if(onProgress) onProgress(i+1, parts.length);
+    const j=await gsWrite(Object.assign({}, payload, { sids:parts[i] }), label);
+    acc.sheet=j.sheet; acc.date=j.date;
+    acc.written.push(...(j.written||[]));
+    acc.skipped.push(...(j.skipped||[]));
+    acc.notFound.push(...(j.notFound||[]));
+  }
+  return acc;
+}
+
 async function gsWrite(payload, label){
   const body=JSON.stringify(Object.assign({ token:GS_WRITE_TOKEN }, payload));
   const url=`${GS_URL}?token=${encodeURIComponent(GS_TOKEN)}&p=${encodeURIComponent(_b64url(body))}&_t=${Date.now()}`;
@@ -921,7 +938,9 @@ if(_wwa) _wwa.onclick=async()=>{
   const lines=[];
   try{
     for(const kind of Object.keys(groups)){
-      const j=await gsWrite({ action:'winterReg', kind, wy, wm, wd, sids:groups[kind] }, `접수대장 ${kind} 기입`);
+      const j=await gsWriteSids({ action:'winterReg', kind, wy, wm, wd },
+        groups[kind], `접수대장 ${kind} 기입`,
+        (n,t)=>{ out.textContent = t>1 ? `${kind} 기입 중… ${n}/${t}` : `${kind} 기입 중…`; });
       lines.push(`${kind}: 기입 ${j.written.length}${j.skipped.length?` · 건너뜀 ${j.skipped.length}`:''}${j.notFound.length?` · 없음 ${j.notFound.length}`:''}`);
     }
     out.innerHTML='✅ '+lines.join('\n');
@@ -2464,7 +2483,8 @@ if(_winRegBtn) _winRegBtn.onclick=async()=>{
   _winRegBtn.disabled=true; out.textContent='기입 중…';
   try{
     const kind=document.getElementById('winRegKind').value;
-    const j=await gsWrite({ action:'winterReg', kind, wy, wm, wd, sids }, '윈터 등록 기입');
+    const j=await gsWriteSids({ action:'winterReg', kind, wy, wm, wd }, sids, '윈터 등록 기입',
+      (n,t)=>{ if(t>1) out.textContent=`기입 중… ${n}/${t}`; });
     const part=[];
     if(j.written.length)  part.push(`기입 <b>${j.written.length}</b>건 (${j.written.join(', ')})`);
     if(j.skipped.length)  part.push(`쓸 칸 없음(이미 값 있음) ${j.skipped.length}건 (${j.skipped.join(', ')})`);
