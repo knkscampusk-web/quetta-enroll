@@ -1211,7 +1211,17 @@ async function buildWinterDailyFromSb(date){
       .map(r=>({반:r.반,번호:r.번호||'',수험번호:r.수험번호,이름:r.이름,내역:(r.removedTerms||[]).join('/'),장학:r.장학||''}))
   ];
 
-  const reg=regs.map(p=>{ const w=winParseTerm(p.내역)||{};
+  // 같은 사람이 '_선금'과 '_완납' 두 건으로 들어오는 경우가 있다.
+  // 완납 한 줄이 B·C를 모두 쓰므로 그 사람의 선금 줄은 빼야 등록이 두 번 세어지지 않는다.
+  const _lumpSids=new Set(regs.filter(p=>{
+    const w=winParseTerm(p.내역)||{}; return w.kind==='완납' && p._conv!==true;
+  }).map(p=>norm(p.수험번호)));
+  const regs2=regs.filter(p=>{
+    const w=winParseTerm(p.내역)||{};
+    return !(w.kind==='선금' && _lumpSids.has(norm(p.수험번호)));
+  });
+
+  const reg=regs2.map(p=>{ const w=winParseTerm(p.내역)||{};
     // 완납전환은 내역이 '_완납'으로 와서 당일 완납과 구분되지 않는다.
     // 경영지원이 보내는 _conv 플래그가 유일한 판정 근거다(true = 선금 냈던 사람의 잔금 납부).
     const conv = (p._conv===true);
@@ -1222,9 +1232,12 @@ async function buildWinterDailyFromSb(date){
              // 완납전환은 선금 때 이미 등록으로 셌으므로 다시 세지 않는다
              countReg: !conv };
   });
-  const ref=refs.map(r=>{ const w=winParseTerm(r.내역)||{};
-    return { sid:norm(r.수험번호), name:r.이름, cohort:r.내역, course:w.course, kind:w.kind, jang:r.장학 };
-  });
+  // 환불도 같은 수험번호가 여러 줄로 오면 1회만
+  const _seenRef=new Set();
+  const ref=refs.filter(r=>{ const k=norm(r.수험번호); if(_seenRef.has(k)) return false; _seenRef.add(k); return true; })
+    .map(r=>{ const w=winParseTerm(r.내역)||{};
+      return { sid:norm(r.수험번호), name:r.이름, cohort:r.내역, course:w.course, kind:w.kind, jang:r.장학 };
+    });
   return { reg, ref, fileDate:date, winter:true };
 }
 
