@@ -1014,8 +1014,8 @@ async function winRosterRun(date, note){
     }catch(e){ noPrev=true; }
     const prevOf=(course,field)=>{
       if(!prev) return 0;
-      const r=prev.find(x=>String(x['학년']||x.학년||'').trim()===course);
-      return r? (parseInt(r[field])||0) : 0;
+      const r=prev.find(x=>Array.isArray(x) && String(x[WIN_IX['학년']]||'').trim()===course);
+      return r? (parseInt(r[WIN_IX[field]])||0) : 0;
     };
     WIN_COURSES.forEach(c=>{
       const b=out[c];
@@ -1159,15 +1159,15 @@ if(_winSave) _winSave.onclick=async()=>{
   _winSave.disabled=true; out.textContent='저장 중…';
   try{
     // 윈터 rawlog — 시즌 네임스페이스(winter_)로 저장되어 '지난 등록 보기'에 쌓인다
-    const rows=WINR.rows.map(b=>({
-      날짜:WINR.date, 구분:(CFG.openWin && WINR.date>CFG.openWin)?'개강후':'개강전',
-      학년:b.course, 계열:'-', 반:'',
-      접수:b.jubsu, '접수 계':b.접수계,
-      '등록-남':b.regM, '환불-남':b.refM?-b.refM:0,
-      '등록-여':b.regF, '환불-여':b.refF?-b.refF:0,
-      완납계:b.완납계, 등록인원:b.등록인원, 누적남:b.누적남, 누적여:b.누적여,
-      작성자:CFG.writer||''
-    }));
+    const writer=(document.getElementById('writer').value||CFG.writer||'');
+    const 구분=(CFG.openWin && WINR.date>CFG.openWin)?'개강후':'개강전';
+    const rows=WINR.rows.map(b=>[
+      WINR.date, 구분, b.course, '-', '',
+      b.jubsu, b.접수계,
+      b.regM, b.refM?-b.refM:0,
+      b.regF, b.refF?-b.refF:0,
+      b.완납계, b.등록인원, b.누적남, b.누적여, writer
+    ]);
     await saveRawlogDay(WINR.date, rows);
     out.innerHTML='✅ 현황 저장 완료 — 지난 등록 보기에 누적됩니다';
     toast('✅ 저장 완료');
@@ -2416,6 +2416,10 @@ document.getElementById('cfgBillMonth').addEventListener('input',syncBaselineFie
  * 날짜 표기가 열마다 달라('10월 13일(월)' / '10/13(월)' / Date / 'YYYY. M. D') 전부 받는다.
  * 시즌이 해를 넘기므로(10월~이듬해 1월) 개강일 연도를 기준으로 연도를 정한다. */
 const WIN_COURSES=['고1 과정','고2 과정'];
+// 윈터 rawlog 열 — packRows/unpackRows 가 배열만 다루므로 순서가 곧 스키마다.
+const WIN_RAW_COLS=['날짜','구분','학년','계열','반','접수','접수 계',
+  '등록-남','환불-남','등록-여','환불-여','완납계','등록인원','누적남','누적여','작성자'];
+const WIN_IX=(()=>{ const o={}; WIN_RAW_COLS.forEach((c,i)=>o[c]=i); return o; })();
 const _wn = x => String(x==null?'':x).replace(/\s/g,'');
 const _p2 = n => String(n).padStart(2,'0');
 
