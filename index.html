@@ -802,8 +802,10 @@ async function sbUnpaidByBan(assign, banList){
   const prev=(st.cfg&&st.cfg.prevTerms)||[];
   const nsid=v=>String(v==null?'':v).replace(/\s/g,'');
   const act=p=>p.status==='active'&&(p.환불금액||0)===0;
-  const currIds=new Set(pays.filter(p=>act(p)&&curr.includes(p.내역)).map(p=>nsid(p.수험번호)));
-  const prevIds=new Set(pays.filter(p=>act(p)&&prev.includes(p.내역)).map(p=>nsid(p.수험번호)));
+  // 정규 미납에 윈터·시즌제로가 섞이지 않게 거른다(경영지원이 해당 내역을 체크하면 들어온다)
+  const other=t=>/윈터|시즌제로|\[\s*\d{2}\s*학년도\s*\]/.test(String(t||''));
+  const currIds=new Set(pays.filter(p=>act(p)&&curr.includes(p.내역)&&!other(p.내역)).map(p=>nsid(p.수험번호)));
+  const prevIds=new Set(pays.filter(p=>act(p)&&prev.includes(p.내역)&&!other(p.내역)).map(p=>nsid(p.수험번호)));
   const perBan={}; let 총계=0; const 미매칭=[];
   prevIds.forEach(id=>{
     if(currIds.has(id)) return;
@@ -835,15 +837,19 @@ async function buildDailyFromSb(date){
   const refunds=Array.isArray(st.refunds)?st.refunds:[];
   const prevTerms=(st.cfg&&st.cfg.prevTerms)||[];
   const dateOf=p=>(p.uploadedDate||p.결제일자);
+  // 정규 명단에서 다른 시즌(윈터·시즌제로)을 제외한다.
+  // 그쪽 내역에는 '[27학년도]' 같은 학년도 표기가 붙고 정규에는 붙지 않는다.
+  const other=t=>/윈터|시즌제로|\[\s*\d{2}\s*학년도\s*\]/.test(String(t||''));
   // 신규 판정: 이전 월 기수(prevTerms)에 이미 납부기록 있으면 신규 아님
   const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
   // 등록: 그날 uploadedDate 이면 등록. 당일퇴소(status='퇴소', _isOut)도 '그날 등록한 사실'은 그대로 카운트.
   // 같은 수험번호가 등록·환불 양쪽에 있어도 각각 센다(한쪽에서 빼지 않음).
-  const regs=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void');
+  const regs=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void' && !other(p.내역));
   // 환불: 그날 환불된 pays + refunds
   const refs=[
-    ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0),
-    ...refunds.filter(r=>_refDateSb(r)===date).map(r=>({반:r.반,번호:r.번호||'',수험번호:r.수험번호,이름:r.이름,내역:(r.removedTerms||[]).join('/'),장학:r.장학||''}))
+    ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0 && !other(p.내역)),
+    ...refunds.filter(r=>_refDateSb(r)===date && !other((r.removedTerms||[]).join('/')))
+      .map(r=>({반:r.반,번호:r.번호||'',수험번호:r.수험번호,이름:r.이름,내역:(r.removedTerms||[]).join('/'),장학:r.장학||''}))
   ];
   const reg=regs.map(p=>({sid:norm(p.수험번호), name:p.이름, ban:p.반, cohort:p.내역, jang:p.장학, isNew:!prevIds.has(p.수험번호)}));
   const ref=refs.map(r=>({sid:norm(r.수험번호), name:r.이름, cohort:r.내역, jang:r.장학}));
@@ -1186,7 +1192,8 @@ if(_winDashWrite) _winDashWrite.onclick=async()=>{
   const after=!!(CFG.openWin && WINR.date>CFG.openWin);
   _winDashWrite.disabled=true; out.textContent='기입 중…';
   try{
-    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WINR.rows }, '윈터 등록현황 기입');
+    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WINR.rows,
+                            writer:(document.getElementById('writer').value||CFG.writer||'') }, '윈터 등록현황 기입');
     const r=j.raw||{};
     out.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
       (r.ok ? `<br>📄 ${r.sheet} 로 ${r.date} ${r.kind} ${r.rows}행 이관 (${r.at}행부터)`
@@ -2199,7 +2206,8 @@ async function saveRawlogDay(date, rows){
   try{ await setDoc(doc(db,COL('rawlog'),RLID(date)), { date, rows:packRows(rows), savedAt:Date.now() });
     HIST.byDate=HIST.byDate||{}; HIST.byDate[date]={rows, writer:''};
     HIST.dates=Object.keys(HIST.byDate).sort();
-    _rlcSave(HIST.byDate, _dstr(new Date()));
+    _rlcSave(HIST.byDate, _dstr(new Date()), true);
+    try{ refreshHistUI(); }catch(e){}
   }catch(e){ console.error('rawlog 저장 실패', e); }
 }
 // 전체 누적 로그 읽어 HIST 구성
