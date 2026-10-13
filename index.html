@@ -189,6 +189,13 @@ tr.tot td{background:var(--teal-soft);font-weight:700;color:var(--teal-ink)}
 #rawTable thead th{font-size:11.5px}
 @media(max-width:880px){#tab-raw .card{width:auto;margin-left:0}}
 
+/* 윈터 표 — 11열이 평평해 눈이 미끄러진다. 묶음 경계선 + 소계 강조로 끊어준다. */
+table.winTbl tr.sum td{background:var(--panel2);border-top:2px solid var(--teal);font-weight:700;color:var(--ink)}
+table.winTbl th.grp,table.winTbl td.grp{border-left:1px solid var(--line)}
+table.winTbl thead tr.grphead th{font-size:11.5px;letter-spacing:.06em;color:var(--muted);
+  font-weight:700;padding-top:9px;padding-bottom:5px;background:var(--panel2)}
+table.winTbl thead tr.grphead th.grp{border-left:1px solid var(--line)}
+
 .warn{background:#fdf0f0;border:1px solid rgba(207,71,71,.32);color:#a23535;border-radius:11px;padding:12px 14px;font-size:14.5px;margin-bottom:14px}
 .note{color:var(--muted);font-size:14px;margin-top:8px}
 .pill{font-size:13px;padding:3px 9px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
@@ -1075,34 +1082,39 @@ function winDashRender(){
     const cap=capOf(i,'M')+capOf(i,'F');
     return `<tr>
       <td><b>${b.course}</b></td>
-      <td class="mono">${b.접수계}</td>
-      <td class="mono">${WINR.noPrev?'–':b.전일등록}</td>
+      <td class="mono grp">${b.접수계}</td>
+      <td class="mono grp">${WINR.noPrev?'–':b.전일등록}</td>
       <td class="mono">${(b.regM+b.regF)||''}</td>
       <td class="mono ${(b.refM+b.refF)?'neg':''}">${neg(b.refM+b.refF)}</td>
-      <td class="mono">${b.regM||''}</td>
+      <td class="mono grp">${b.regM||''}</td>
       <td class="mono ${b.refM?'neg':''}">${neg(b.refM)}</td>
       <td class="mono">${b.regF||''}</td>
       <td class="mono ${b.refF?'neg':''}">${neg(b.refF)}</td>
-      <td class="mono">${b.완납계}</td>
+      <td class="mono grp">${b.완납계}</td>
       <td class="mono">${cap||'—'}</td>
       <td class="mono">${pct(b.등록인원,cap)}</td></tr>`;}).join('');
   const capT=['M','F'].reduce((n,g)=>n+capOf(0,g)+capOf(1,g),0);
   document.getElementById('winDashTable').innerHTML=
-    `<table class="tbl"><thead><tr>
-      <th>과정</th><th>접수 계</th><th>전일등록</th><th>금일등록</th><th>금일환불</th>
-      <th>남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
-      <th>완납계</th><th>정원</th><th>충원율</th>
+    `<table class="tbl winTbl"><thead>
+      <tr class="grphead"><th></th><th class="grp">접수</th>
+        <th class="grp" colspan="3">당일 증감</th>
+        <th class="grp" colspan="4">성별</th>
+        <th class="grp" colspan="3">누적 · 정원</th></tr>
+      <tr>
+      <th>과정</th><th class="grp">접수 계</th><th class="grp">전일등록</th><th>금일등록</th><th>금일환불</th>
+      <th class="grp">남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
+      <th class="grp">완납계</th><th>정원</th><th>충원율</th>
     </tr></thead><tbody>${tr}
       <tr class="sum"><td><b>소계</b></td>
-        <td class="mono">${T.접수계}</td>
-        <td class="mono">${WINR.noPrev?'–':T.전일등록}</td>
+        <td class="mono grp">${T.접수계}</td>
+        <td class="mono grp">${WINR.noPrev?'–':T.전일등록}</td>
         <td class="mono"><b>${T.regM+T.regF}</b></td>
         <td class="mono ${(T.refM+T.refF)?'neg':''}">${neg(T.refM+T.refF)||'<b>0</b>'}</td>
-        <td class="mono"><b>${T.regM}</b></td>
+        <td class="mono grp"><b>${T.regM}</b></td>
         <td class="mono ${T.refM?'neg':''}">${neg(T.refM)||'<b>0</b>'}</td>
         <td class="mono"><b>${T.regF}</b></td>
         <td class="mono ${T.refF?'neg':''}">${neg(T.refF)||'<b>0</b>'}</td>
-        <td class="mono">${T.완납계}</td>
+        <td class="mono grp">${T.완납계}</td>
         <td class="mono">${capT||'—'}</td><td class="mono">${pct(T.등록인원,capT)}</td></tr>
     </tbody></table>`;
 
@@ -3138,12 +3150,13 @@ function renderWinterHist(H){
   H.rows.forEach(b=>{ for(const k in T) T[k]+=(b[k]||0); });
   const dReg=T.dRegM+T.dRegF, dRef=T.dRefM+T.dRefF;
   const cell=v=>`<td class="mono">${v||''}</td>`;
+  const gcell=v=>`<td class="mono grp">${v||''}</td>`;
   const tr=H.rows.map(b=>`<tr><td><b>${b.course}</b></td>
-    ${cell(b.jubsu)}${cell(b.dRegM+b.dRegF)}
+    ${gcell(b.jubsu)}${gcell(b.dRegM+b.dRegF)}
     <td class="mono ${(b.dRefM+b.dRefF)?'neg':''}">${(b.dRefM+b.dRefF)?-(b.dRefM+b.dRefF):''}</td>
-    ${cell(b.dRegM)}<td class="mono ${b.dRefM?'neg':''}">${b.dRefM?-b.dRefM:''}</td>
+    ${gcell(b.dRegM)}<td class="mono ${b.dRefM?'neg':''}">${b.dRefM?-b.dRefM:''}</td>
     ${cell(b.dRegF)}<td class="mono ${b.dRefF?'neg':''}">${b.dRefF?-b.dRefF:''}</td>
-    ${cell(b.full)}<td class="mono"><b>${b.등록인원}</b></td>
+    ${gcell(b.full)}<td class="mono"><b>${b.등록인원}</b></td>
     <td class="mono">${b.누적남}/${b.누적여}</td></tr>`).join('');
   const st=(cls,v,l)=>`<div class="stat ${cls}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   document.getElementById('histBody').innerHTML=`
@@ -3155,16 +3168,21 @@ function renderWinterHist(H){
         ${st('t',T.등록인원,'등록인원(누적)')}${st('y',T.jubsu,'접수 계(누적)')}
         ${st('',T.full,'완납 계(누적)')}
       </div>
-      <div class="tablewrap"><table class="tbl"><thead><tr>
-        <th>과정</th><th>접수 계</th><th>금일등록</th><th>금일환불</th>
-        <th>남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
-        <th>완납계</th><th>등록인원</th><th>남/여</th>
+      <div class="tablewrap"><table class="tbl winTbl"><thead>
+        <tr class="grphead"><th></th><th class="grp">접수</th>
+          <th class="grp" colspan="2">당일 증감</th>
+          <th class="grp" colspan="4">성별</th>
+          <th class="grp" colspan="3">누적</th></tr>
+        <tr>
+        <th>과정</th><th class="grp">접수 계</th><th class="grp">금일등록</th><th>금일환불</th>
+        <th class="grp">남자 등록</th><th>남자 환불</th><th>여자 등록</th><th>여자 환불</th>
+        <th class="grp">완납계</th><th>등록인원</th><th>남/여</th>
       </tr></thead><tbody>${tr}
-        <tr class="sum"><td><b>소계</b></td>${cell(T.jubsu)}<td class="mono"><b>${dReg}</b></td>
+        <tr class="sum"><td><b>소계</b></td>${gcell(T.jubsu)}<td class="mono grp"><b>${dReg}</b></td>
           <td class="mono ${dRef?'neg':''}"><b>${dRef?-dRef:0}</b></td>
-          <td class="mono"><b>${T.dRegM}</b></td><td class="mono ${T.dRefM?'neg':''}"><b>${T.dRefM?-T.dRefM:0}</b></td>
+          <td class="mono grp"><b>${T.dRegM}</b></td><td class="mono ${T.dRefM?'neg':''}"><b>${T.dRefM?-T.dRefM:0}</b></td>
           <td class="mono"><b>${T.dRegF}</b></td><td class="mono ${T.dRefF?'neg':''}"><b>${T.dRefF?-T.dRefF:0}</b></td>
-          ${cell(T.full)}<td class="mono"><b>${T.등록인원}</b></td>
+          ${gcell(T.full)}<td class="mono"><b>${T.등록인원}</b></td>
           <td class="mono">${T.누적남}/${T.누적여}</td></tr>
       </tbody></table></div>
     </div>`;
