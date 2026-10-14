@@ -3037,6 +3037,53 @@ function normDate(v){
   return s;
 }
 const numOr0=v=>{ const n=parseInt(v); return isNaN(n)?0:n; };
+// 윈터 raw 업로드 — 등록대장 raw 탭은 열 구성이 정규와 다르다.
+// (날짜/구분/학년/계열/반/전일등록/접수/접수 계/등록/환불/완납계/등록-남/환불-남/등록-여/환불-여/작성자)
+// 위치로 읽으면 값이 엉뚱한 칸으로 들어가므로 반드시 헤더 이름으로 매핑한다.
+function parseWinterRawLog(rows){
+  let h=rows.findIndex(r=>r&&r.some(c=>String(c).trim()==='날짜')&&r.some(c=>String(c).trim()==='구분'));
+  if(h<0) h=0;
+  const hdr=(rows[h]||[]).map(x=>String(x==null?'':x).replace(/\s/g,''));
+  const ix=n=>hdr.indexOf(String(n).replace(/\s/g,''));
+  const need=['날짜','구분','학년','접수','등록-남','환불-남','등록-여','환불-여'];
+  const miss=need.filter(n=>ix(n)<0);
+  if(miss.length) throw new Error('윈터 raw 열 없음: '+miss.join(', '));
+  const num=v=>{ const n=parseInt(String(v==null?'':v).replace(/,/g,'')); return isNaN(n)?0:n; };
+  const get=(r,n)=>{ const i=ix(n); return i<0?'':r[i]; };
+
+  const byDate={};
+  for(let i=h+1;i<rows.length;i++){
+    const r=rows[i]; if(!r) continue;
+    const date=normDate(get(r,'날짜')); const gubun=String(get(r,'구분')||'').trim();
+    const course=String(get(r,'학년')||'').trim();
+    if(!date||!gubun||!course) continue;
+    const regM=num(get(r,'등록-남')), refM=Math.abs(num(get(r,'환불-남')));
+    const regF=num(get(r,'등록-여')), refF=Math.abs(num(get(r,'환불-여')));
+    // 시트 raw에는 일별 '완납'이 없고 '완납계'(스냅샷)만 있다 → 일별 완납은 0으로 둔다
+    const row=[ date, gubun, course, String(get(r,'계열')||'-'), String(get(r,'반')||''),
+                num(get(r,'접수')), num(get(r,'접수 계')),
+                regM, refM?-refM:0, regF, refF?-refF:0,
+                0, num(get(r,'완납계')),
+                0, 0, 0,
+                String(get(r,'작성자')||'') ];
+    if(!byDate[date]) byDate[date]={rows:[], writer:row[WIN_IX['작성자']]||''};
+    byDate[date].rows.push(row);
+  }
+  // 등록인원·누적남/여는 날짜순으로 누적해 채운다
+  const acc={};
+  Object.keys(byDate).sort().forEach(d=>{
+    byDate[d].rows.forEach(r=>{
+      const c=r[WIN_IX['학년']];
+      if(!acc[c]) acc[c]={m:0,f:0};
+      acc[c].m += r[WIN_IX['등록-남']] + r[WIN_IX['환불-남']];
+      acc[c].f += r[WIN_IX['등록-여']] + r[WIN_IX['환불-여']];
+      r[WIN_IX['누적남']]=acc[c].m; r[WIN_IX['누적여']]=acc[c].f;
+      r[WIN_IX['등록인원']]=acc[c].m+acc[c].f;
+    });
+  });
+  return byDate;
+}
+
 function parseRawLog(rows){
   // 헤더 행 찾기
   let h=rows.findIndex(r=>r&&r.some(c=>String(c).trim()==='날짜')&&r.some(c=>String(c).trim()==='구분'));
@@ -3248,7 +3295,7 @@ function renderHist(R){
         const sn=wb.SheetNames.find(n=>n.includes('raw정규'))||wb.SheetNames[0];
         rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false,cellDates:true});
       }
-      HIST.byDate=parseRawLog(rows);
+      HIST.byDate = _seasonNow()==='윈터' ? parseWinterRawLog(rows) : parseRawLog(rows);
       HIST.dates=Object.keys(HIST.byDate).sort();
       if(!HIST.dates.length){ toast('raw 로그에서 날짜를 못 찾았어요'); return; }
       refreshHistUI();
