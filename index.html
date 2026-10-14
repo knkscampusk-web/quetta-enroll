@@ -755,8 +755,8 @@ async function gsWrite(payload, label){
   return j;
 }
 // 개강후 블록 기입: 반별 오늘값 + 작성자(S1) + 서버가 이월 처리 & raw 누적
-async function writeEnroll(rows, writer, receipt, jang){
-  return gsWrite({ action:'enroll', rows, writer, receipt, jang }, '개강후 기입');
+async function writeEnroll(rows, writer, receipt, jang, resetPrevReg){
+  return gsWrite({ action:'enroll', rows, writer, receipt, jang, resetPrevReg:!!resetPrevReg }, '개강후 기입');
 }
 // 환불자 이동: 학생명단 행 → 환불 시트 이동 후 삭제 (퇴소일=기준일)
 // 수험번호로 행을 특정하므로 재시도해도 중복 이동은 없다(이미 삭제됐으면 notFound로 빠짐).
@@ -2893,7 +2893,8 @@ document.getElementById('enApplyBtn').onclick=async()=>{
     // 장학 블록: 라벨별 접수/등록/환불
     const pj=(STATE.result&&STATE.result.perJang)||{};
     const jang=JANG_LIST.map(L=>({ label:L, jubsu:(pj[L]&&pj[L].접수)||0, deung:(pj[L]&&pj[L].등록)||0, hwan:(pj[L]&&pj[L].환불)||0 }));
-    const r=await writeEnroll(EN.payload, writer, receipt, jang);
+    const r=await writeEnroll(EN.payload, writer, receipt, jang,
+      document.getElementById('enResetPrevReg').checked);
     let msg=`✅ 기입 ${r.written.length}개 반${r.notFound.length?` · 못찾음 ${r.notFound.join(',')}`:''}`;
     if(r.raw&&r.raw.appended) msg+=` · raw 누적 ${r.raw.appended}행(${r.raw.atRow}행부터)`;
     else if(r.raw&&r.raw.error) msg+=` · ⚠ raw: ${r.raw.error}`;
