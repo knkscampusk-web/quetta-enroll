@@ -843,6 +843,7 @@ async function buildDailyFromSb(date){
   const pays=Array.isArray(st.pays)?st.pays:[];
   const refunds=Array.isArray(st.refunds)?st.refunds:[];
   const prevTerms=(st.cfg&&st.cfg.prevTerms)||[];
+  const currTerms=(st.cfg&&st.cfg.currTerms)||[];
   const dateOf=p=>(p.uploadedDate||p.결제일자);
   // 정규 명단에서 다른 시즌(윈터·시즌제로)을 제외한다.
   // 그쪽 내역에는 '[27학년도]' 같은 학년도 표기가 붙고 정규에는 붙지 않는다.
@@ -851,7 +852,13 @@ async function buildDailyFromSb(date){
   const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
   // 등록: 그날 uploadedDate 이면 등록. 당일퇴소(status='퇴소', _isOut)도 '그날 등록한 사실'은 그대로 카운트.
   // 같은 수험번호가 등록·환불 양쪽에 있어도 각각 센다(한쪽에서 빼지 않음).
-  const regs=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void' && !other(p.내역));
+  // 지난 기수 결제(11월 전환 후 들어온 10월 미납분 등)는 당월 등록이 아니다.
+  // 이미 재원인 사람의 지각 납부라 신규도 아니고 편성계도 늘면 안 된다 → 등록 집계에서 제외.
+  // currTerms 가 비어 있으면(설정 전) 필터를 걸지 않는다.
+  const stale=t=>currTerms.length>0 && !currTerms.includes(String(t||''));
+  const regsAll=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void' && !other(p.내역));
+  const regs=regsAll.filter(p=>!stale(p.내역));
+  const staleCount=regsAll.length-regs.length;
   // 환불: 그날 환불된 pays + refunds
   const refs=[
     ...pays.filter(p=>dateOf(p)===date && (p.환불금액||0)>0 && !other(p.내역)),
@@ -860,7 +867,7 @@ async function buildDailyFromSb(date){
   ];
   const reg=regs.map(p=>({sid:norm(p.수험번호), name:p.이름, ban:p.반, cohort:p.내역, jang:p.장학, isNew:!prevIds.has(p.수험번호)}));
   const ref=refs.map(r=>({sid:norm(r.수험번호), name:r.이름, cohort:r.내역, jang:r.장학}));
-  return { reg, ref, fileDate:date };
+  return { reg, ref, fileDate:date, staleCount };
 }
 
 
@@ -2971,7 +2978,8 @@ document.getElementById('sbDailyBtn').onclick=async()=>{
   try{
     STATE.daily=await buildDailyFromSb(date);
     setLed('sb');
-    note.innerHTML=`✅ ${date} 일일명단: 등록 ${STATE.daily.reg.length} · 환불 ${STATE.daily.ref.length} (신규 ${STATE.daily.reg.filter(r=>r.isNew).length}) 불러옴`;
+    note.innerHTML=`✅ ${date} 일일명단: 등록 ${STATE.daily.reg.length} · 환불 ${STATE.daily.ref.length} (신규 ${STATE.daily.reg.filter(r=>r.isNew).length}) 불러옴`
+      + (STATE.daily.staleCount ? ` <span style="color:var(--muted)">· 지난 기수 납부 ${STATE.daily.staleCount}건 제외</span>` : '');
     toast('✅ 경영지원 일일명단 불러오기 완료');
     checkReady();
   }catch(e){
