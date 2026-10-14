@@ -852,10 +852,12 @@ async function buildDailyFromSb(date){
   const prevIds=new Set(pays.filter(p=>p.status==='active'&&prevTerms.includes(p.내역)).map(p=>p.수험번호));
   // 등록: 그날 uploadedDate 이면 등록. 당일퇴소(status='퇴소', _isOut)도 '그날 등록한 사실'은 그대로 카운트.
   // 같은 수험번호가 등록·환불 양쪽에 있어도 각각 센다(한쪽에서 빼지 않음).
-  // 지난 기수 결제(11월 전환 후 들어온 10월 미납분 등)는 당월 등록이 아니다.
+  // 지난 기수 결제(11월 집계 중에 들어온 10월 미납분 등)는 당월 등록이 아니다.
   // 이미 재원인 사람의 지각 납부라 신규도 아니고 편성계도 늘면 안 된다 → 등록 집계에서 제외.
-  // currTerms 가 비어 있으면(설정 전) 필터를 걸지 않는다.
-  const stale=t=>currTerms.length>0 && !currTerms.includes(String(t||''));
+  // 기준은 경영지원 cfg.currTerms 가 아니라 '설정 > 현재 집계월'이다.
+  // (경영지원이 기수 체크를 늦게 바꾸면 currTerms 로는 걸러지지 않는다)
+  const BM=parseInt(CFG.billMonth)||0;
+  const stale=t=>{ if(!BM) return false; const m=cohortMonth(t); return m>0 && m!==BM; };
   const regsAll=pays.filter(p=>dateOf(p)===date && p.status!=='취소' && p.status!=='void' && !other(p.내역));
   const regs=regsAll.filter(p=>!stale(p.내역));
   const staleCount=regsAll.length-regs.length;
