@@ -3087,46 +3087,55 @@ const numOr0=v=>{ const n=parseInt(v); return isNaN(n)?0:n; };
 // (날짜/구분/학년/계열/반/전일등록/접수/접수 계/등록/환불/완납계/등록-남/환불-남/등록-여/환불-여/작성자)
 // 위치로 읽으면 값이 엉뚱한 칸으로 들어가므로 반드시 헤더 이름으로 매핑한다.
 function parseWinterRawLog(rows){
+  // 헤더 이름으로만 읽는다. 위치 추측 금지 — 시트 열이 바뀌어도 안전하다.
   let h=rows.findIndex(r=>r&&r.some(c=>String(c).trim()==='날짜')&&r.some(c=>String(c).trim()==='구분'));
   if(h<0) h=0;
   const hdr=(rows[h]||[]).map(x=>String(x==null?'':x).replace(/\s/g,''));
   const ix=n=>hdr.indexOf(String(n).replace(/\s/g,''));
-  const need=['날짜','구분','학년','접수','등록-남','환불-남','등록-여','환불-여'];
+  const need=['날짜','구분','학년','등록-남','환불-남','등록-여','환불-여'];
   const miss=need.filter(n=>ix(n)<0);
   if(miss.length) throw new Error('윈터 raw 열 없음: '+miss.join(', '));
   const num=v=>{ const n=parseInt(String(v==null?'':v).replace(/,/g,'')); return isNaN(n)?0:n; };
   const get=(r,n)=>{ const i=ix(n); return i<0?'':r[i]; };
 
-  const byDate={};
+  // 1) 행 수집
+  const items=[];
   for(let i=h+1;i<rows.length;i++){
     const r=rows[i]; if(!r) continue;
-    const date=normDate(get(r,'날짜')); const gubun=String(get(r,'구분')||'').trim();
+    const date=normDate(get(r,'날짜'));
+    const gubun=String(get(r,'구분')||'').trim();
     const course=String(get(r,'학년')||'').trim();
     if(!date||!gubun||!course) continue;
-    const regM=num(get(r,'등록-남')), refM=Math.abs(num(get(r,'환불-남')));
-    const regF=num(get(r,'등록-여')), refF=Math.abs(num(get(r,'환불-여')));
-    // 시트 raw에는 일별 '완납'이 없고 '완납계'(스냅샷)만 있다 → 일별 완납은 0으로 둔다
-    const row=[ date, gubun, course, String(get(r,'계열')||'-'), String(get(r,'반')||''),
-                num(get(r,'접수')), num(get(r,'접수 계')),
-                regM, refM?-refM:0, regF, refF?-refF:0,
-                0, num(get(r,'완납계')),
-                0, 0, 0,
-                String(get(r,'작성자')||'') ];
-    if(!byDate[date]) byDate[date]={rows:[], writer:row[WIN_IX['작성자']]||''};
-    byDate[date].rows.push(row);
+    items.push({ date, gubun, course,
+      계열:String(get(r,'계열')||'-'), 반:String(get(r,'반')||''),
+      접수:num(get(r,'접수')), 접수계:num(get(r,'접수 계')),
+      regM:num(get(r,'등록-남')), refM:Math.abs(num(get(r,'환불-남'))),
+      regF:num(get(r,'등록-여')), refF:Math.abs(num(get(r,'환불-여'))),
+      완납계:num(get(r,'완납계')),
+      writer:String(get(r,'작성자')||'') });
   }
-  // 등록인원·누적남/여는 날짜순으로 누적해 채운다
+  items.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+
+  // 2) 과정별 누적 — 일별 완납은 시트에 없으므로 완납계 차분으로 복원한다
   const acc={};
-  Object.keys(byDate).sort().forEach(d=>{
-    byDate[d].rows.forEach(r=>{
-      const c=r[WIN_IX['학년']];
-      if(!acc[c]) acc[c]={m:0,f:0};
-      acc[c].m += r[WIN_IX['등록-남']] + r[WIN_IX['환불-남']];
-      acc[c].f += r[WIN_IX['등록-여']] + r[WIN_IX['환불-여']];
-      r[WIN_IX['누적남']]=acc[c].m; r[WIN_IX['누적여']]=acc[c].f;
-      r[WIN_IX['등록인원']]=acc[c].m+acc[c].f;
-    });
-  });
+  const byDate={};
+  for(const it of items){
+    const a=acc[it.course] || (acc[it.course]={m:0,f:0,jub:0,full:0});
+    a.m += it.regM - it.refM;
+    a.f += it.regF - it.refF;
+    a.jub = it.접수계 || (a.jub + it.접수);
+    const fullCum = it.완납계 || a.full;          // 빈칸이면 직전 누적 유지
+    const fullDay = Math.max(0, fullCum - a.full);
+    a.full = fullCum;
+    const row=[ it.date, it.gubun, it.course, it.계열, it.반,
+                it.접수, a.jub,
+                it.regM, it.refM?-it.refM:0,
+                it.regF, it.refF?-it.refF:0,
+                fullDay, a.full,
+                a.m + a.f, a.m, a.f, it.writer ];
+    if(!byDate[it.date]) byDate[it.date]={rows:[], writer:it.writer};
+    byDate[it.date].rows.push(row);
+  }
   return byDate;
 }
 
