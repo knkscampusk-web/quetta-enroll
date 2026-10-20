@@ -1036,8 +1036,8 @@ async function winRosterRun(date, note){
     }catch(e){ noPrev=true; }
     const prevOf=(course,field)=>{
       if(!prev) return 0;
-      const r=prev.find(x=>Array.isArray(x) && String(x[WIN_IX['학년']]||'').trim()===course);
-      return r? (parseInt(r[WIN_IX[field]])||0) : 0;
+      const r=prev.find(x=>winCourseOf(x)===course);
+      return r? (parseInt(winGet(r,field))||0) : 0;
     };
     WIN_COURSES.forEach(c=>{
       const b=out[c];
@@ -2462,6 +2462,23 @@ const WIN_COURSES=['고1 과정','고2 과정'];
 const WIN_RAW_COLS=['날짜','구분','학년','계열','반','접수','접수 계',
   '등록-남','환불-남','등록-여','환불-여','완납','완납계','등록인원','누적남','누적여','작성자'];
 const WIN_IX=(()=>{ const o={}; WIN_RAW_COLS.forEach((c,i)=>o[c]=i); return o; })();
+// 예전 저장분은 일별 '완납' 열이 없는 16열이었다. 두 스키마 외에는 존재하지 않는다.
+const WIN_RAW_COLS_V1=['날짜','구분','학년','계열','반','접수','접수 계',
+  '등록-남','환불-남','등록-여','환불-여','완납계','등록인원','누적남','누적여','작성자'];
+// 값은 반드시 '열 이름'으로 꺼낸다. 인덱스를 직접 쓰면 스키마가 바뀔 때 조용히 어긋난다.
+function winGet(row, name){
+  if(!Array.isArray(row)) return 0;
+  const cols = (row.length===WIN_RAW_COLS_V1.length) ? WIN_RAW_COLS_V1 : WIN_RAW_COLS;
+  const i = cols.indexOf(name);
+  if(i<0) return 0;
+  const n = parseInt(row[i]);
+  return isNaN(n) ? (row[i]==null?0:row[i]) : n;
+}
+function winCourseOf(row){
+  if(!Array.isArray(row)) return '';
+  const cols = (row.length===WIN_RAW_COLS_V1.length) ? WIN_RAW_COLS_V1 : WIN_RAW_COLS;
+  return String(row[cols.indexOf('학년')]||'').trim();
+}
 const _wn = x => String(x==null?'':x).replace(/\s/g,'');
 const _p2 = n => String(n).padStart(2,'0');
 
@@ -3235,10 +3252,10 @@ function buildWinterHist(date){
     const rows=(HIST.byDate[d]&&HIST.byDate[d].rows)||[];
     for(const r of rows){
       if(!Array.isArray(r)) continue;
-      const c=String(r[WIN_IX['학년']]||'').trim();
+      const c=winCourseOf(r);
       const b=out[c]; if(!b) continue;
-      const jb=n(r[WIN_IX['접수']]), rm=n(r[WIN_IX['등록-남']]), fm=Math.abs(n(r[WIN_IX['환불-남']]));
-      const rf=n(r[WIN_IX['등록-여']]), ff=Math.abs(n(r[WIN_IX['환불-여']])), fl=n(r[WIN_IX['완납']]);
+      const jb=n(winGet(r,'접수')), rm=n(winGet(r,'등록-남')), fm=Math.abs(n(winGet(r,'환불-남')));
+      const rf=n(winGet(r,'등록-여')), ff=Math.abs(n(winGet(r,'환불-여'))), fl=n(winGet(r,'완납'));
       b.jubsu+=jb; b.regM+=rm; b.refM+=fm; b.regF+=rf; b.refF+=ff; b.full+=fl;
       if(d===date){ b.dJubsu=jb; b.dRegM=rm; b.dRefM=fm; b.dRegF=rf; b.dRefF=ff; b.dFull=fl; }
     }
