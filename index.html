@@ -1052,7 +1052,7 @@ async function winRosterRun(date, note){
       b.누적여 = prevOf(c,'누적여') + b.regF - b.refF;
     });
 
-    WINR={ date, rows:WIN_COURSES.map(c=>out[c]), 미매칭, noPrev };
+    WINR={ date, rows:WIN_COURSES.map(c=>out[c]), 미매칭, noPrev, prevDate: noPrev?null:prevDate };
     winDashRender();
     note.innerHTML=`✅ 접수대장 ${rows.length-1}행 · 일일명단 등록 ${daily.reg.length} · 환불 ${daily.ref.length} 집계 완료`
       + (미매칭.length?` <span style="color:var(--red)">(접수대장에 없는 수험번호 ${미매칭.length}건: ${미매칭.join(', ')})</span>`:'');
@@ -1143,7 +1143,7 @@ function winDashRender(){
   tiles.innerHTML =
     tile('윈터 총 등록인원', T.등록인원, `남 ${T.누적남} · 여 ${T.누적여}`, 't')
     + WINR.rows.map((b,i)=>tile(b.course+' 등록인원', b.등록인원, `정원 ${capOf(i,'M')+capOf(i,'F')||'—'} · ${pct(b.등록인원,capOf(i,'M')+capOf(i,'F'))}`, 'g')).join('')
-    + tile('총 접수', T.접수계, `완납 ${T.완납계}`, 'y');
+    + tile('총 접수', T.접수계, '', 'y');
 
   // 시즌제로 가용 정원 = 총 기숙사 정원 − 윈터 등록인원 (성별)
   const zm=(DORM.M==null?null:DORM.M-T.누적남), zf=(DORM.F==null?null:DORM.F-T.누적여);
@@ -1157,8 +1157,11 @@ function winDashRender(){
         <td class="mono">${T.등록인원}</td>
         <td class="mono"><b>${(zm==null||zf==null)?'—':zm+zf}</b></td></tr>
      </tbody>`;
-  document.getElementById('winDashNote').textContent=
-    `${WINR.date} · 기입 대상 ${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}`;
+  document.getElementById('winDashNote').innerHTML=
+    `${WINR.date} · 기입 대상 ${after?'개강후 등록(13·14행)':'개강전 등록(8·9행)'}`
+    + (WINR.prevDate
+        ? ` · <span style="${_isYday(WINR.prevDate,WINR.date)?'':'color:var(--red);font-weight:700'}">전일값 기준 ${WINR.prevDate.slice(5).replace('-','/')}</span>`
+        : ` · <span style="color:var(--red);font-weight:700">전일값 없음</span>`);
 
   // 보고용 한 줄 — 학년 구분 없이 합계
   const reg=WINR.rows.reduce((n,b)=>n+b.regM+b.regF,0);
