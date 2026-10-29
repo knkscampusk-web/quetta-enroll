@@ -1026,18 +1026,32 @@ async function winRosterRun(date, note){
     daily.ref.forEach(x=>bump(x.sid, x.course, 'ref'));
 
     // 전일값 — 정규와 동일하게 '어제 현황 저장본'에서. 저장을 거르면 끊긴다.
-    const prevDate=(()=>{ const t=new Date(date); t.setDate(t.getDate()-1); return _dstr(t); })();
-    let prev=null, noPrev=true;
+    // 전일값은 '어제' 문서가 아니라 '저장된 날짜 중 기준일보다 앞선 가장 최근 날짜'에서 가져온다.
+    // 주말·휴일처럼 저장을 건너뛴 날이 있으면 어제 문서가 없어 0으로 떨어지고,
+    // 그 0이 그대로 저장돼 다음날로 음수가 전파된다(실제로 그렇게 깨졌음).
+    // 전일값은 저장된 '등록인원/접수 계/완납계' 칸을 믿지 않는다.
+    // 그 칸들은 과거에 전일값이 끊긴 채 저장돼 음수가 남아 있을 수 있다.
+    // 지난 등록 보기와 동일하게 '일별 증감을 처음부터 누적'해서 구한다(그 값은 정확함).
+    let noPrev=true, prevDate=null, prevAgg=null;
     try{
       if(!HIST.dates.length) await loadRawlogAll();
-      const h=HIST.byDate[prevDate];
-      if(h&&Array.isArray(h.rows)) prev=h.rows;
-      noPrev=!prev;
-    }catch(e){ noPrev=true; }
+      const cand=HIST.dates.filter(d=>d<date).sort();
+      if(cand.length){
+        prevDate=cand[cand.length-1];
+        prevAgg=buildWinterHist(prevDate);
+        noPrev=false;
+      }
+    }catch(e){ noPrev=true; prevDate=null; prevAgg=null; }
     const prevOf=(course,field)=>{
-      if(!prev) return 0;
-      const r=prev.find(x=>winCourseOf(x)===course);
-      return r? (parseInt(winGet(r,field))||0) : 0;
+      if(!prevAgg) return 0;
+      const b=prevAgg.rows.find(x=>x.course===course);
+      if(!b) return 0;
+      if(field==='등록인원') return b.등록인원||0;
+      if(field==='접수 계')  return b.jubsu||0;
+      if(field==='완납계')   return b.full||0;
+      if(field==='누적남')   return b.누적남||0;
+      if(field==='누적여')   return b.누적여||0;
+      return 0;
     };
     WIN_COURSES.forEach(c=>{
       const b=out[c];
@@ -1186,6 +1200,15 @@ const _winSave=document.getElementById('winSaveBtn');
 if(_winSave) _winSave.onclick=async()=>{
   const out=document.getElementById('winDashOut');
   if(!WINR){ out.textContent='먼저 등록잡기를 실행하세요.'; return; }
+  // 전일값이 없거나 누적이 음수면 저장을 막는다. 한 번 저장되면 다음날로 그대로 전파된다.
+  const bad=WINR.rows.find(b=>(b.등록인원||0)<0 || (b.접수계||0)<0);
+  if(WINR.noPrev || bad){
+    const why = WINR.noPrev ? '전일 저장본을 읽지 못했습니다'
+                            : `${bad.course} 누적이 음수입니다 (등록인원 ${bad.등록인원})`;
+    out.innerHTML=`<span style="color:var(--red)">⚠ 저장 중단 — ${why}.<br>`
+      + `이 상태로 저장하면 다음날 전일값까지 망가집니다. ‘전일 불러오기’로 다시 읽은 뒤 등록잡기를 실행하세요.</span>`;
+    return;
+  }
   _winSave.disabled=true; out.textContent='저장 중…';
   try{
     // 윈터 rawlog — 시즌 네임스페이스(winter_)로 저장되어 '지난 등록 보기'에 쌓인다
