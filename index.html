@@ -1249,7 +1249,10 @@ if(_winDashWrite) _winDashWrite.onclick=async()=>{
     const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:rowsOut,
                             writer:(document.getElementById('writer').value||CFG.writer||'') }, '윈터 등록현황 기입');
     const r=j.raw||{};
-    out.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
+    const f=j.full||{};
+    const fTxt = (f.wrote&&f.wrote.length) ? `<br>완납계(F8·F9) 기입 — ${f.wrote.join(' · ')}`
+               : (f.skipped&&f.skipped.length) ? `<br><span style="color:var(--red)">완납계 기입 안 됨 — 보낸 값 ${f.skipped.join(' · ')}</span>` : '';
+    out.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` + fTxt +
       (r.ok ? `<br>📄 ${r.sheet} 로 ${r.date} ${r.kind} ${r.rows}행 이관 (${r.at}행부터)`
             : `<br><span style="color:var(--red)">📄 로데이터 이관 안 됨 — ${r.msg||'사유 불명'}</span>`);
   }catch(e){
