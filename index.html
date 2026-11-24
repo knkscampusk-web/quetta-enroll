@@ -1245,7 +1245,8 @@ if(_winDashWrite) _winDashWrite.onclick=async()=>{
   const after=!!(CFG.openWin && WINR.date>CFG.openWin);
   _winDashWrite.disabled=true; out.textContent='기입 중…';
   try{
-    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:WINR.rows,
+    const rowsOut=WINR.rows.map(b=>Object.assign({}, b, { full:b.완납계 }));
+    const j=await gsWrite({ action:'winterEnroll', afterOpen:after, rows:rowsOut,
                             writer:(document.getElementById('writer').value||CFG.writer||'') }, '윈터 등록현황 기입');
     const r=j.raw||{};
     out.innerHTML=`✅ ${j.sheet} 기입 완료 — ${j.written.join(', ')}` +
